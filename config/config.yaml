@@ -1,0 +1,76 @@
+minimax:
+  # MiniMax API Configuration
+  api_key: "${MINIMAX_API_KEY}"
+  base_url: "https://api.minimax.chat/v1"
+  
+  # Model Selection
+  models:
+    primary: "abab6.5-chat"      # Primary model for general tasks
+    cover_letter: "abab6.5-chat"  # Creativity-focused
+    resume: "abab6.5-chat"       # Precision-focused
+  
+  # Temperature Settings
+  temperature:
+    cover_letter: 0.7  # Higher creativity for cover letters
+    resume: 0.2        # Lower precision for resume tailoring
+    default: 0.5
+  
+  # Context Window & Token Limits
+  context_window: 245760  # ~200k tokens for large job descriptions
+  max_tokens: 8192
+  
+  # Request Settings
+  timeout: 120
+  max_retries: 3
+
+scraper:
+  # Playwright Configuration
+  browser_type: "chromium"
+  headless: true
+  slow_mo: 500  # ms between actions (human-like)
+  
+  # Timeout Settings
+  navigation_timeout: 30000
+  element_timeout: 10000
+  
+  # User Agent
+  user_agent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+  
+  # Selectors for common job platforms
+  apply_button_selectors:
+    - "button[data-testid='apply-button']"
+    - "button[class*='apply']"
+    - "a[class*='apply']"
+    - "[aria-label*='Apply']"
+    - "button:has-text('Apply')"
+    - "a:has-text('Apply')"
+
+logging:
+  # Sleek Terminal Logging
+  level: "INFO"
+  format: "{time:HH:mm:ss} | {level:icon} | {message}"
+  colorize: true
+  show_thread: false
+  show_path: false
+  
+  # File Logging
+  file:
+    enabled: true
+    path: "logs/agent.log"
+    rotation: "10 MB"
+    retention: "7 days"
+
+agent:
+  # State Management
+  states:
+    - idle
+    - scraping
+    - analyzing
+    - crafting_resume
+    - applying
+    - completed
+    - failed
+
+  # Retry Policy
+  max_retries: 3
+  retry_delay: 2  # seconds
