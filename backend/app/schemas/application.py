@@ -21,7 +21,7 @@ class JobBase(BaseModel):
 
 
 class JobAnalyze(JobBase):
-    user_id: str
+    user_id: Optional[str] = None
 
 
 class JobApply(JobBase):

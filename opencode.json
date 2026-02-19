@@ -1,0 +1,92 @@
+{
+    "$schema": "https://opencode.ai/config.json",
+    "mcp": {
+        "filesystem": {
+            "type": "local",
+            "enabled": true,
+            "command": [
+                "npx",
+                "-y",
+                "@modelcontextprotocol/server-filesystem",
+                "/home/hairzee/prods/applymate"
+            ]
+        },
+        "playwright": {
+            "type": "local",
+            "enabled": true,
+            "command": [
+                "npx",
+                "-y",
+                "@playwright/mcp"
+            ]
+        },
+        "supabase": {
+            "type": "local",
+            "enabled": true,
+            "command": [
+                "npx",
+                "-y",
+                "@modelcontextprotocol/server-postgres",
+                "${SUPABASE_DB_URL}"
+            ],
+            "environment": {
+                "SUPABASE_DB_URL": "${SUPABASE_DB_URL}"
+            }
+        },
+        "fetch": {
+            "type": "local",
+            "enabled": true,
+            "command": [
+                "npx",
+                "-y",
+                "@modelcontextprotocol/server-fetch"
+            ]
+        },
+        "memory": {
+            "type": "local",
+            "enabled": true,
+            "command": [
+                "npx",
+                "-y",
+                "@modelcontextprotocol/server-memory"
+            ]
+        },
+        "github": {
+            "type": "local",
+            "enabled": true,
+            "command": [
+                "npx",
+                "-y",
+                "@modelcontextprotocol/server-github"
+            ],
+            "environment": {
+                "GITHUB_PERSONAL_ACCESS_TOKEN": "${GITHUB_PAT}"
+            }
+        },
+        "redis": {
+            "type": "local",
+            "enabled": true,
+            "command": [
+                "npx",
+                "-y",
+                "@redis/mcp-redis"
+            ],
+            "environment": {
+                "REDIS_URL": "${REDIS_URL}"
+            }
+        },
+        "stripe": {
+            "type": "local",
+            "enabled": false,
+            "command": [
+                "npx",
+                "-y",
+                "@stripe/mcp",
+                "--tools=all"
+            ],
+            "environment": {
+                "STRIPE_SECRET_KEY": "${STRIPE_SECRET_KEY}"
+            }
+        }
+    }
+}
