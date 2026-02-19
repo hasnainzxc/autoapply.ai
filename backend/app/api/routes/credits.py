@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from app.services.supabase import supabase_client
+from sqlalchemy.orm import Session
+from app.services.database import get_db, Credit, get_or_create_credits, CreditTransaction
+from app.services.auth import get_current_user
 
 router = APIRouter()
 
@@ -17,68 +19,46 @@ class CreditResponse(BaseModel):
     subscription_tier: str
 
 
-def get_current_user() -> str:
-    return "placeholder-user-id"
-
-
 @router.get("/credits/balance", response_model=CreditResponse)
-async def get_credit_balance(current_user: str = Depends(get_current_user)):
+async def get_credit_balance(
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user)
+):
     """Get user's credit balance"""
-    response = supabase_client.get_table("credits").select("*").eq("user_id", current_user).execute()
+    credit = get_or_create_credits(db, current_user)
     
-    if not response.data:
-        # Create default credits entry
-        new_response = supabase_client.get_table("credits").insert({
-            "user_id": current_user,
-            "balance": 5,  # Free credits for signup
-            "lifetime_purchased": 5,
-            "lifetime_used": 0,
-            "subscription_tier": "free"
-        }).execute()
-        return new_response.data[0]
-    
-    return response.data[0]
+    return {
+        "balance": credit.balance,
+        "lifetime_purchased": 5,
+        "lifetime_used": credit.lifetime_used,
+        "subscription_tier": "free"
+    }
 
 
 @router.post("/credits/purchase")
 async def purchase_credits(
     purchase: CreditPurchase,
+    db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)
 ):
     """Purchase credits via Stripe"""
-    # Verify Stripe payment
-    # In production, verify payment_intent_id with Stripe API
-    
     credits_to_add = purchase.amount
     
-    # Get current credits
-    response = supabase_client.get_table("credits").select("*").eq("user_id", current_user).execute()
+    credit = get_or_create_credits(db, current_user)
+    credit.balance = (credit.balance or 0) + credits_to_add
+    db.commit()
     
-    if not response.data:
-        new_response = supabase_client.get_table("credits").insert({
-            "user_id": current_user,
-            "balance": credits_to_add,
-            "lifetime_purchased": credits_to_add,
-            "lifetime_used": 0
-        }).execute()
-    else:
-        current = response.data[0]
-        supabase_client.get_table("credits").update({
-            "balance": current["balance"] + credits_to_add,
-            "lifetime_purchased": current.get("lifetime_purchased", 0) + credits_to_add,
-            "updated_at": "now()"
-        }).eq("user_id", current_user).execute()
-    
-    # Record transaction
-    supabase_client.get_table("credit_transactions").insert({
-        "user_id": current_user,
-        "amount": credits_to_add,
-        "type": "purchase",
-        "description": f"Purchased {credits_to_add} credits",
-        "stripe_payment_id": purchase.stripe_payment_intent_id
-    }).execute()
+    transaction = CreditTransaction(
+        user_id=current_user,
+        amount=credits_to_add,
+        type="purchase",
+        description=f"Purchased {credits_to_add} credits"
+    )
+    db.add(transaction)
+    db.commit()
     
     return {
         "status": "success",
-        "credits_added": credits_to_add
+        "credits_added": credits_to_add,
+        "new_balance": credit.balance
     }

@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import auth, users, jobs, applications, credits
-from app.services.supabase import supabase_client
+from app.services.database import init_db
 import os
 
 
@@ -19,6 +19,10 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    @app.on_event("startup")
+    async def startup_event():
+        init_db()
 
     app.include_router(auth.router, prefix="/api", tags=["auth"])
     app.include_router(users.router, prefix="/api", tags=["users"])

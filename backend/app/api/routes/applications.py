@@ -1,83 +1,132 @@
-from fastapi import APIRouter, Depends
-from typing import List
-from app.schemas.application import ApplicationResponse, ApplicationUpdate
-from app.services.supabase import supabase_client
+from fastapi import APIRouter, Depends, HTTPException
+from typing import List, Optional
+from sqlalchemy.orm import Session
+from app.services.database import get_db, Application, Credit, CreditTransaction
+from app.services.auth import get_current_user
+import uuid
 
 router = APIRouter()
 
 
-def get_current_user() -> str:
-    return "placeholder-user-id"
-
-
-@router.get("/applications", response_model=List[ApplicationResponse])
+@router.get("/applications")
 async def list_applications(
+    db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user),
-    status: str = None
+    status: Optional[str] = None
 ):
     """List user's applications"""
-    query = supabase_client.get_table("applications").select("*").eq("user_id", current_user)
+    query = db.query(Application).filter(Application.user_id == current_user)
     
     if status:
-        query = query.eq("status", status)
+        query = query.filter(Application.status == status)
     
-    response = query.order("created_at", desc=True).execute()
-    return response.data
+    apps = query.order_by(Application.created_at.desc()).all()
+    
+    return [
+        {
+            "id": str(app.id),
+            "user_id": app.user_id,
+            "job_url": app.job_url,
+            "job_title": app.job_title,
+            "company_name": app.company_name,
+            "company_logo": app.company_logo,
+            "location": app.location,
+            "salary_range": app.salary_range,
+            "status": app.status,
+            "match_score": app.match_score,
+            "tailored_resume": app.tailored_resume,
+            "cover_letter": app.cover_letter,
+            "applied_at": app.applied_at.isoformat() if app.applied_at else None,
+            "error_message": app.error_message,
+            "retry_count": app.retry_count,
+            "created_at": app.created_at.isoformat() if app.created_at else None,
+            "updated_at": app.updated_at.isoformat() if app.updated_at else None
+        }
+        for app in apps
+    ]
 
 
-@router.get("/applications/{application_id}", response_model=ApplicationResponse)
+@router.get("/applications/{application_id}")
 async def get_application(
     application_id: str,
+    db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)
 ):
     """Get application details"""
-    response = supabase_client.get_table("applications").select("*").eq("id", application_id).eq("user_id", current_user).execute()
+    try:
+        app_uuid = uuid.UUID(application_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid application ID")
     
-    if not response.data:
-        from fastapi import HTTPException
+    app = db.query(Application).filter(
+        Application.id == app_uuid,
+        Application.user_id == current_user
+    ).first()
+    
+    if not app:
         raise HTTPException(status_code=404, detail="Application not found")
     
-    return response.data[0]
+    return {
+        "id": str(app.id),
+        "user_id": app.user_id,
+        "job_url": app.job_url,
+        "job_title": app.job_title,
+        "company_name": app.company_name,
+        "company_logo": app.company_logo,
+        "location": app.location,
+        "salary_range": app.salary_range,
+        "status": app.status,
+        "match_score": app.match_score,
+        "tailored_resume": app.tailored_resume,
+        "cover_letter": app.cover_letter,
+        "applied_at": app.applied_at.isoformat() if app.applied_at else None,
+        "error_message": app.error_message,
+        "retry_count": app.retry_count,
+        "created_at": app.created_at.isoformat() if app.created_at else None,
+        "updated_at": app.updated_at.isoformat() if app.updated_at else None
+    }
 
 
 @router.delete("/applications/{application_id}")
 async def cancel_application(
     application_id: str,
+    db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)
 ):
     """Cancel a queued application"""
-    response = supabase_client.get_table("applications").select("*").eq("id", application_id).eq("user_id", current_user).execute()
+    try:
+        app_uuid = uuid.UUID(application_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid application ID")
     
-    if not response.data:
-        from fastapi import HTTPException
+    app = db.query(Application).filter(
+        Application.id == app_uuid,
+        Application.user_id == current_user
+    ).first()
+    
+    if not app:
         raise HTTPException(status_code=404, detail="Application not found")
     
-    app = response.data[0]
-    
-    if app["status"] not in ["queued", "scraping"]:
-        from fastapi import HTTPException
+    if app.status not in ["queued", "scraping"]:
         raise HTTPException(status_code=400, detail="Cannot cancel application in current state")
     
-    # Update status to failed
-    supabase_client.get_table("applications").update({
-        "status": "failed",
-        "error_message": "Cancelled by user",
-        "updated_at": "now()"
-    }).eq("id", application_id).execute()
+    app.status = "failed"
+    app.error_message = "Cancelled by user"
+    db.commit()
     
-    # Refund credit
-    credits_response = supabase_client.get_table("credits").select("*").eq("user_id", current_user).execute()
-    if credits_response.data:
-        supabase_client.get_table("credits").update({
-            "balance": credits_response.data[0]["balance"] + 1,
-            "lifetime_used": credits_response.data[0].get("lifetime_used", 1) - 1
-        }).eq("user_id", current_user).execute()
+    credit = db.query(Credit).filter(Credit.user_id == current_user).first()
+    if credit:
+        credit.balance = (credit.balance or 0) + 1
+        credit.lifetime_used = max(0, (credit.lifetime_used or 1) - 1)
+        db.commit()
         
-        supabase_client.get_table("credit_transactions").insert({
-            "user_id": current_user,
-            "amount": 1,
-            "type": "refunded",
-            "description": f"Refunded for cancelled application"
-        }).execute()
+        transaction = CreditTransaction(
+            user_id=current_user,
+            amount=1,
+            type="refunded",
+            description="Refunded for cancelled application"
+        )
+        db.add(transaction)
+        db.commit()
     
     return {"status": "cancelled"}

@@ -1,78 +1,97 @@
 from fastapi import APIRouter, Depends, HTTPException, Header
 from typing import Optional
-from app.schemas.user import ProfileCreate, ProfileUpdate, ProfileResponse
-from app.services.supabase import supabase_client
+from sqlalchemy.orm import Session
+from app.services.database import get_db, Profile, get_or_create_credits
+from app.services.auth import get_current_user
 
 router = APIRouter()
 
 
-def get_current_user(authorization: str = Header(None)) -> str:
-    """Extract clerk_id from Clerk JWT"""
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Not authenticated")
-    
-    # In production, verify Clerk JWT here
-    # For now, return a placeholder
-    return authorization.replace("Bearer ", "")
-
-
 @router.get("/users/me")
-async def get_current_user_profile(current_user: str = Depends(get_current_user)):
+async def get_current_user_profile(
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user)
+):
     """Get current user profile"""
-    response = supabase_client.get_table("profiles").select("*").eq("clerk_id", current_user).execute()
+    profile = db.query(Profile).filter(Profile.clerk_id == current_user).first()
     
-    if not response.data:
-        raise HTTPException(status_code=404, detail="Profile not found")
+    if not profile:
+        profile = Profile(
+            clerk_id=current_user,
+            email=f"{current_user}@example.com",
+            full_name="Test User"
+        )
+        db.add(profile)
+        db.commit()
+        db.refresh(profile)
     
-    return response.data[0]
+    return {
+        "id": str(profile.id),
+        "clerk_id": profile.clerk_id,
+        "email": profile.email,
+        "full_name": profile.full_name,
+        "base_resume": profile.base_resume
+    }
 
 
 @router.put("/users/me")
 async def update_current_user_profile(
-    profile: ProfileUpdate,
+    profile_data: dict,
+    db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)
 ):
     """Update current user profile"""
-    update_data = profile.model_dump(exclude_unset=True)
-    update_data["updated_at"] = "now()"
+    profile = db.query(Profile).filter(Profile.clerk_id == current_user).first()
     
-    response = supabase_client.get_table("profiles").update(update_data).eq("clerk_id", current_user).execute()
-    
-    if not response.data:
+    if not profile:
         raise HTTPException(status_code=404, detail="Profile not found")
     
-    return response.data[0]
+    if "full_name" in profile_data:
+        profile.full_name = profile_data["full_name"]
+    if "email" in profile_data:
+        profile.email = profile_data["email"]
+    if "base_resume" in profile_data:
+        profile.base_resume = profile_data["base_resume"]
+    
+    db.commit()
+    db.refresh(profile)
+    
+    return {"status": "updated", "profile_id": str(profile.id)}
 
 
 @router.post("/users/me/resume")
 async def upload_resume(
-    resume_text: str,
+    resume_data: dict,
+    db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)
 ):
     """Upload base resume"""
-    response = supabase_client.get_table("profiles").update({
-        "base_resume": resume_text,
-        "updated_at": "now()"
-    }).eq("clerk_id", current_user).execute()
+    profile = db.query(Profile).filter(Profile.clerk_id == current_user).first()
     
-    if not response.data:
-        raise HTTPException(status_code=404, detail="Profile not found")
+    if not profile:
+        profile = Profile(clerk_id=current_user)
+        db.add(profile)
+    
+    profile.base_resume = resume_data.get("resume_text", "")
+    db.commit()
     
     return {"status": "uploaded"}
 
 
 @router.post("/users/me/cover-letter")
 async def upload_cover_letter(
-    cover_letter: str,
+    cover_letter_data: dict,
+    db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)
 ):
     """Upload base cover letter template"""
-    response = supabase_client.get_table("profiles").update({
-        "base_cover_letter": cover_letter,
-        "updated_at": "now()"
-    }).eq("clerk_id", current_user).execute()
+    profile = db.query(Profile).filter(Profile.clerk_id == current_user).first()
     
-    if not response.data:
-        raise HTTPException(status_code=404, detail="Profile not found")
+    if not profile:
+        profile = Profile(clerk_id=current_user)
+        db.add(profile)
+    
+    profile.base_resume = cover_letter_data.get("cover_letter", "")
+    db.commit()
     
     return {"status": "uploaded"}
