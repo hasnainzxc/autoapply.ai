@@ -16,6 +16,38 @@ UPLOAD_DIR = Path("/home/hairzee/prods/applymate/backend/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
+@router.get("/resumes")
+async def list_resumes(
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user)
+):
+    """List user's resumes and tailored versions"""
+    resumes = db.query(Resume).filter(Resume.user_id == current_user).order_by(Resume.created_at.desc()).all()
+    tailored = db.query(TailoredResume).filter(TailoredResume.user_id == current_user).order_by(TailoredResume.created_at.desc()).all()
+    
+    return {
+        "resumes": [
+            {
+                "id": str(r.id),
+                "original_file_path": r.original_file_path,
+                "extracted_text": r.extracted_text,
+                "created_at": r.created_at.isoformat() if r.created_at else None
+            }
+            for r in resumes
+        ],
+        "tailored": [
+            {
+                "id": str(t.id),
+                "job_description": t.job_description[:50] + "..." if t.job_description and len(t.job_description) > 50 else t.job_description,
+                "status": t.status,
+                "pdf_path": t.pdf_path,
+                "created_at": t.created_at.isoformat() if t.created_at else None
+            }
+            for t in tailored
+        ]
+    }
+
+
 def log_resume_event(db: Session, tailored_resume_id: uuid.UUID, event_type: str, message: str, payload: dict = None):
     event = ResumeEvent(
         tailored_resume_id=tailored_resume_id,

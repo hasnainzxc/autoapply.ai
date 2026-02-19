@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUser, UserButton } from "@clerk/nextjs";
+import { Navbar } from "@/components/navbar";
 
 type Step = "landing" | "job-input" | "resume-select" | "processing" | "complete";
 
@@ -40,6 +41,14 @@ export default function HomePage() {
   const [jobUrl, setJobUrl] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState("");
   const [loading, setLoading] = useState(false);
+
+  if (!isLoaded) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center">
+        <div className="w-6 h-6 border border-purple-500/30 border-t-purple-500 rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   const handleStart = () => {
     if (!jobUrl.trim()) return;
@@ -84,55 +93,16 @@ export default function HomePage() {
 
   return (
     <div className="min-h-screen bg-black relative overflow-hidden bg-pattern">
+      <Navbar />
+
       {/* Ambient glow */}
       <div className="fixed inset-0 -z-10">
         <div className="absolute top-0 left-1/4 w-[600px] h-[600px] bg-purple-500/8 rounded-full blur-[200px] animate-pulse" />
         <div className="absolute bottom-0 right-1/4 w-[500px] h-[500px] bg-indigo-500/6 rounded-full blur-[180px] animate-pulse" style={{ animationDelay: '1s' }} />
       </div>
 
-      {/* Header */}
-      <header className="flex items-center justify-between px-8 py-6">
-        <div className="flex items-center gap-3 animate-slide-up">
-          <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-700 flex items-center justify-center">
-            <svg className="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 13.255A23.931 23.931 0 0112 15c-3.183 0-6.22-.62-9-1.745M16 6V4a2 2 0 00-2-2h-4a2 2 0 00-2 2v2m4 6h.01M5 20h14a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
-            </svg>
-          </div>
-          <span className="text-xl font-semibold text-white">ApplyMate</span>
-        </div>
-        
-        {user ? (
-          <div className="flex items-center gap-4 animate-slide-up">
-            <button
-              onClick={() => router.push("/")}
-              className="text-zinc-400 hover:text-white transition-colors text-sm font-medium"
-            >
-              Dashboard
-            </button>
-            <div className="w-9 h-9 rounded-full overflow-hidden ring-1 ring-white/10">
-              <UserButton afterSignOutUrl="/" />
-            </div>
-          </div>
-        ) : (
-          <div className="flex items-center gap-4 animate-slide-up">
-            <a
-              href="/sign-in"
-              className="text-zinc-400 hover:text-white transition-colors text-sm font-medium"
-            >
-              Sign in
-            </a>
-            <a
-              href="/sign-up"
-              className="px-5 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-sm font-medium rounded-xl transition-all btn-glow"
-            >
-              Get Started
-            </a>
-          </div>
-        )}
-      </header>
-
       {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-8 pt-12 pb-20">
+      <main className="max-w-4xl mx-auto px-8 pt-24 pb-20">
         {/* Step indicator */}
         {step !== "landing" && step !== "complete" && (
           <div className="flex items-center justify-center gap-4 mb-12 animate-scale-in">
@@ -145,7 +115,7 @@ export default function HomePage() {
                 }`}>
                   {i + 1}
                 </div>
-                {i < 3 && <div className={`w-12 h-px ${step !== "landing" ? "bg-purple-600" : "bg-zinc-800"}`} />}
+                {i < 3 && <div className="w-12 h-px bg-zinc-800" />}
               </div>
             ))}
           </div>
