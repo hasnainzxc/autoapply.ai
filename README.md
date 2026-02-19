@@ -21,212 +21,300 @@ AI-powered job application automation platform that streamlines your job search 
 | Frontend | Next.js 15, React 18, Tailwind CSS |
 | Authentication | Clerk |
 | Backend | FastAPI (Python) |
-| Database | Supabase (PostgreSQL) |
+| Database | PostgreSQL (Supabase or local Docker) |
 | Task Queue | Redis + Celery |
-| AI/LLM | MiniMax API |
+| AI/LLM | OpenRouter |
 | Browser Automation | Playwright |
+| PDF Generation | WeasyPrint |
 
-## Getting Started
+---
 
-### Prerequisites
+## 🚀 Quick Start (Local Development)
 
-- Node.js 18+
-- Python 3.10+
-- PostgreSQL (Supabase)
-- Redis (for task queue)
-
-### Installation
-
-1. **Clone the repository**
+### 1. Start Infrastructure (Docker)
 
 ```bash
-git clone https://github.com/yourusername/applymate.git
-cd applymate
+# Redis (for task queue)
+docker run -d --name applymate-redis -p 6379:6379 redis:alpine
+
+# PostgreSQL (database)
+docker run -d --name applymate-db \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=applymate \
+  -p 5432:5432 postgres:alpine
 ```
 
-2. **Set up Python virtual environment**
+### 2. Initialize Database Tables
 
 ```bash
-python3 -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-pip install -r requirements.txt
+docker exec applymate-db psql -U postgres -d applymate -c "
+CREATE EXTENSION IF NOT EXISTS 'uuid-ossp';
+
+-- Core tables
+CREATE TABLE IF NOT EXISTS profiles (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    clerk_id VARCHAR(255) UNIQUE,
+    email VARCHAR(255),
+    full_name VARCHAR(255),
+    base_resume TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS credits (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id VARCHAR(255) UNIQUE,
+    balance INTEGER DEFAULT 0,
+    lifetime_used INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS credit_transactions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id VARCHAR(255),
+    amount INTEGER,
+    type VARCHAR(50),
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS applications (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id VARCHAR(255),
+    job_url TEXT,
+    job_title VARCHAR(255),
+    company_name VARCHAR(255),
+    company_logo TEXT,
+    location VARCHAR(255),
+    salary_range VARCHAR(100),
+    status VARCHAR(50) DEFAULT 'queued',
+    match_score INTEGER,
+    tailored_resume JSONB,
+    cover_letter TEXT,
+    applied_at TIMESTAMP WITH TIME ZONE,
+    error_message TEXT,
+    retry_count INTEGER DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS application_events (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    application_id UUID REFERENCES applications(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL,
+    message TEXT,
+    payload JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Resume tailoring tables
+CREATE TABLE IF NOT EXISTS resumes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id VARCHAR(255),
+    original_file_path TEXT,
+    extracted_text TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS tailored_resumes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id VARCHAR(255),
+    resume_id UUID,
+    job_description TEXT,
+    llm_model TEXT,
+    llm_raw_response TEXT,
+    llm_structured_json JSONB,
+    template_used TEXT,
+    pdf_path TEXT,
+    status TEXT DEFAULT 'processing',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS resume_events (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tailored_resume_id UUID,
+    event_type TEXT NOT NULL,
+    message TEXT,
+    payload JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+"
 ```
 
-3. **Set up Frontend**
+### 3. Configure Environment
 
-```bash
-cd frontend
-npm install
-```
+Create `backend/.env`:
+```env
+# Database (local PostgreSQL)
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/applymate
 
-4. **Configure Environment Variables**
+# LLM (required for resume tailoring)
+OPENROUTER_API_KEY=your_openrouter_key_here
 
-Copy `.env.example` to `.env` and fill in your values:
-
-```bash
-# Frontend (.env.local in frontend/)
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_xxx
+# Auth (optional for local dev - uses fallback)
 CLERK_SECRET_KEY=sk_test_xxx
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
+CLERK_JWT_KEY=your_jwt_secret
 
-# Backend (.env in backend/)
-MINIMAX_API_KEY=your_minimax_key
-SUPABASE_URL=https://your-project.supabase.co
-SUPABASE_ANON_KEY=your_anon_key
-SUPABASE_SERVICE_KEY=your_service_key
+# Task Queue
+CELERY_BROKER_URL=redis://localhost:6379/0
+CELERY_RESULT_BACKEND=redis://localhost:6379/1
 ```
 
-5. **Run the development servers**
+### 4. Install Dependencies & Run
 
-Frontend:
 ```bash
-cd frontend
-npm run dev
-```
-
-Backend:
-```bash
+# Install Python dependencies
 cd backend
-uvicorn app.main:app --reload
+pip install -r requirements.txt
+
+# Create uploads directory
+mkdir -p uploads
+
+# Start backend
+PYTHONPATH=/home/hairzee/prods/applymate/backend python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
-## Project Structure
+### 5. Test the API
+
+```bash
+# Health check
+curl http://localhost:8000/api/health
+
+# Analyze a job
+curl -X POST http://localhost:8000/api/jobs/analyze \
+  -H "Content-Type: application/json" \
+  -d '{"job_url": "https://example.com/job", "job_title": "Software Engineer"}'
+
+# Upload a resume (PDF or DOCX)
+curl -X POST http://localhost:8000/api/resume/upload \
+  -F "file=@/path/to/resume.pdf"
+
+# Tailor resume (requires OPENROUTER_API_KEY)
+curl -X POST http://localhost:8000/api/resume/tailor \
+  -F "resume_id=<resume_id>" \
+  -F "job_description=Python developer with FastAPI"
+
+# Download tailored PDF
+curl -X GET http://localhost:8000/api/resume/<tailored_resume_id>/download
+```
+
+---
+
+## 📋 API Endpoints
+
+### Core
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/health` | Health check |
+| POST | `/api/jobs/analyze` | Analyze job URL, returns match score |
+| POST | `/api/jobs/apply` | Queue job application |
+| GET | `/api/credits/balance` | Get credit balance |
+| GET | `/api/applications` | List user applications |
+
+### Resume Tailoring
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/resume/upload` | Upload PDF/DOCX, extract text |
+| POST | `/api/resume/tailor` | Generate tailored resume via LLM |
+| GET | `/api/resume/{id}/download` | Download generated PDF |
+| GET | `/api/resume/events/{id}` | Get event logs for resume |
+
+### User & Auth
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/users/me` | Get user profile |
+| POST | `/api/webhooks/clerk` | Clerk webhook handler |
+
+---
+
+## 🔧 Working with Docker
+
+### Start containers
+```bash
+docker start applymate-redis applymate-db
+```
+
+### Stop containers
+```bash
+docker stop applymate-redis applymate-db
+```
+
+### View logs
+```bash
+docker logs applymate-db
+docker logs applymate-redis
+```
+
+### Access PostgreSQL directly
+```bash
+docker exec -it applymate-db psql -U postgres -d applymate
+
+# Example queries
+SELECT * FROM applications;
+SELECT * FROM resumes;
+SELECT * FROM resume_events;
+```
+
+### Rebuild containers (if needed)
+```bash
+docker rm -f applymate-redis applymate-db
+# Then run the docker run commands from step 1
+```
+
+---
+
+## 📁 Project Structure
 
 ```
 applymate/
 ├── frontend/                 # Next.js 15 frontend
 │   ├── app/                # App router pages
-│   │   ├── page.tsx       # Landing page with job flow
-│   │   ├── (auth)/        # Auth routes (sign-in, sign-up)
-│   │   └── (dashboard)/   # Protected dashboard
 │   ├── components/         # React components
-│   │   └── dashboard/     # Dashboard widgets
-│   ├── middleware.ts      # Clerk auth middleware
 │   └── package.json
 │
 ├── backend/                # FastAPI backend
 │   ├── app/
-│   │   ├── api/routes/   # API endpoints
-│   │   ├── services/      # Business logic
-│   │   ├── workers/       # Celery tasks
-│   │   └── main.py       # FastAPI app
+│   │   ├── api/routes/   # API endpoints (jobs, resumes, applications, etc.)
+│   │   ├── services/      # Database, auth, supabase services
+│   │   └── workers/       # Celery tasks
+│   ├── uploads/           # Uploaded resumes & generated PDFs
 │   ├── celery_app.py      # Celery configuration
 │   └── requirements.txt
 │
-├── src/                   # Standalone scraper (CLI)
-│   ├── config.py
-│   ├── job_scraper.py
-│   ├── minimax_client.py
-│   └── logger.py
+├── docs/                  # Documentation
+│   └── LOCAL_SETUP.md    # Detailed local setup guide
 │
 ├── config/                # Configuration files
-│   └── config.yaml
-│
-├── docs/                  # Documentation
-│   └── system_spec.md
-│
-├── requirements.txt       # Root Python dependencies
-├── run.py                # CLI runner for scraper
 └── README.md
 ```
 
-## API Endpoints
+---
 
-### Authentication
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/webhooks/clerk` | Handle Clerk webhooks |
+## 🔐 Environment Variables
 
-### Users
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/users/me` | Get current user profile |
-| PUT | `/api/users/me` | Update profile, resume, cover letter |
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `OPENROUTER_API_KEY` | Yes* | For resume tailoring (*returns 503 if missing) |
+| `CLERK_SECRET_KEY` | No | For production auth |
+| `CLERK_JWT_KEY` | No | For JWT verification |
+| `REDIS_URL` | No | For Celery task queue |
 
-### Jobs
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/jobs` | List jobs for current user |
-| POST | `/api/jobs/analyze` | Analyze job (match score) |
-| POST | `/api/jobs/apply` | Queue job application |
+---
 
-### Applications
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/applications` | List user's applications |
-| GET | `/api/applications/{id}` | Get application details |
-| DELETE | `/api/applications/{id}` | Cancel application |
+## 🚢 Deployment
 
-### Credits
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/credits/balance` | Get credit balance |
-| POST | `/api/credits/purchase` | Purchase credits (Stripe) |
+### Production (Supabase + Railway/Render)
 
-## User Flow
+1. Use Supabase Cloud instead of local PostgreSQL
+2. Set `DATABASE_URL` to Supabase connection string
+3. Set `OPENROUTER_API_KEY` for LLM calls
+4. Deploy backend to Railway/Render/Vercel
 
-1. **Landing** - User visits homepage and enters job URL
-2. **Template Selection** - User chooses resume template (Tech, Creative, Business, General)
-3. **Authentication** - If not signed in, user signs up/in
-4. **Processing** - AI scrapes job, tailors resume, generates cover letter
-5. **Application** - Auto-fills and submits application
-6. **Dashboard** - Track all applications and their status
-
-## Application Status States
-
-```
-queued → scraping → analyzing → crafting → applying → confirmed
-                                              ↓
-                                           failed
-```
-
-## Security
-
-- All API keys are stored in environment variables
-- Clerk handles authentication securely
-- Supabase RLS (Row Level Security) enabled
-- CORS configured for specific domains only
-- No secrets are committed to version control
-
-### Security Best Practices
-
-1. **Never commit `.env` files** - They are in `.gitignore`
-2. **Use different keys for dev/prod** - Use test keys in development
-3. **Rotate API keys regularly** - Especially MiniMax and Clerk keys
-4. **Enable 2FA on Clerk** - For admin accounts
-
-## Deployment
-
-### Vercel (Frontend)
-
-```bash
-cd frontend
-vercel deploy
-```
-
-### Railway/Render (Backend)
-
-```bash
-cd backend
-uvicorn app.main:app --host 0.0.0.0 --port $PORT
-```
-
-### Supabase
-
-Run migrations in `docs/schema.sql` to set up the database.
+---
 
 ## License
 
 MIT License - see LICENSE for details.
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
-
-## Support
-
-For issues and questions, please open a GitHub issue.

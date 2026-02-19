@@ -88,6 +88,44 @@ class ApplicationEvent(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
+class Resume(Base):
+    __tablename__ = "resumes"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String(255))
+    original_file_path = Column(Text)
+    extracted_text = Column(Text)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+
+class TailoredResume(Base):
+    __tablename__ = "tailored_resumes"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(String(255))
+    resume_id = Column(UUID(as_uuid=True))
+    job_description = Column(Text)
+    llm_model = Column(String(100))
+    llm_raw_response = Column(Text)
+    llm_structured_json = Column(JSON)
+    template_used = Column(String(100))
+    pdf_path = Column(Text)
+    status = Column(String(50), default="processing")
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ResumeEvent(Base):
+    __tablename__ = "resume_events"
+    
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tailored_resume_id = Column(UUID(as_uuid=True))
+    event_type = Column(String(50))
+    message = Column(Text)
+    payload = Column(JSONB)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 def init_db():
     Base.metadata.create_all(bind=engine)
 

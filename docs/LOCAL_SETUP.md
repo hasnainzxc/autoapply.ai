@@ -74,6 +74,38 @@ CREATE TABLE IF NOT EXISTS application_events (
     payload JSONB,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+CREATE TABLE IF NOT EXISTS resumes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id VARCHAR(255),
+    original_file_path TEXT,
+    extracted_text TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS tailored_resumes (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    user_id VARCHAR(255),
+    resume_id UUID,
+    job_description TEXT,
+    llm_model TEXT,
+    llm_raw_response TEXT,
+    llm_structured_json JSONB,
+    template_used TEXT,
+    pdf_path TEXT,
+    status TEXT DEFAULT 'processing',
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS resume_events (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    tailored_resume_id UUID,
+    event_type TEXT NOT NULL,
+    message TEXT,
+    payload JSONB,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
 "
 ```
 
@@ -82,14 +114,14 @@ CREATE TABLE IF NOT EXISTS application_events (
 Edit `backend/.env`:
 ```env
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/applymate
-OPENROUTER_API_KEY=your_openrouter_key  # Optional - returns mock score if missing
+OPENROUTER_API_KEY=your_openrouter_key  # Required for resume tailoring
 CLERK_SECRET_KEY=your_clerk_key
 CLERK_JWT_KEY=your_jwt_secret
 CELERY_BROKER_URL=redis://localhost:6379/0
 CELERY_RESULT_BACKEND=redis://localhost:6379/1
 ```
 
-### 4. Start Backend
+### 4. Install Dependencies & Start Backend
 
 ```bash
 cd backend
@@ -99,6 +131,7 @@ PYTHONPATH=/home/hairzee/prods/applymate/backend python -m uvicorn app.main:app 
 
 ## API Endpoints
 
+### Core
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/api/health` | GET | Health check |
@@ -106,6 +139,18 @@ PYTHONPATH=/home/hairzee/prods/applymate/backend python -m uvicorn app.main:app 
 | `/api/jobs/apply` | POST | Queue job application |
 | `/api/credits/balance` | GET | Get credit balance |
 | `/api/applications` | GET | List user applications |
+
+### Resume Tailoring
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/resume/upload` | POST | Upload PDF/DOCX, extract text |
+| `/api/resume/tailor` | POST | Generate tailored resume via LLM |
+| `/api/resume/{id}/download` | GET | Download generated PDF |
+| `/api/resume/events/{id}` | GET | Get event logs for resume |
+
+### User
+| Endpoint | Method | Description |
+|----------|--------|-------------|
 | `/api/users/me` | GET | Get user profile |
 | `/api/webhooks/clerk` | POST | Clerk webhook handler |
 
@@ -116,6 +161,21 @@ PYTHONPATH=/home/hairzee/prods/applymate/backend python -m uvicorn app.main:app 
 curl -X POST http://localhost:8000/api/jobs/analyze \
   -H "Content-Type: application/json" \
   -d '{"job_url": "https://example.com/job", "job_title": "Engineer"}'
+
+# Upload resume (PDF or DOCX)
+curl -X POST http://localhost:8000/api/resume/upload \
+  -F "file=@/path/to/resume.pdf"
+
+# Tailor resume (requires OPENROUTER_API_KEY)
+curl -X POST http://localhost:8000/api/resume/tailor \
+  -F "resume_id=<resume_id>" \
+  -F "job_description=Looking for Python developer with FastAPI"
+
+# Download tailored PDF
+curl -X GET http://localhost:8000/api/resume/<tailored_resume_id>/download
+
+# Check resume events
+curl http://localhost:8000/api/resume/events/<tailored_resume_id>
 
 # Check credits
 curl http://localhost:8000/api/credits/balance
@@ -128,6 +188,23 @@ curl http://localhost:8000/api/applications
 
 - **Database**: SQLAlchemy + PostgreSQL (local Docker)
 - **Auth**: Clerk JWT with dev fallback to `test-user-123`
-- **LLM**: OpenRouter (optional - mock score 75 if no key)
+- **LLM**: OpenRouter (required for resume tailoring - returns 503 if missing)
 - **Scraping**: BeautifulSoup + httpx (sync for MVP)
+- **PDF Generation**: WeasyPrint
+- **File Storage**: Local filesystem (`backend/uploads/`)
 - **Queue**: Celery + Redis (async tasks - not used in MVP flow)
+
+## Resume Tailoring Flow
+
+1. Upload resume → `POST /api/resume/upload`
+2. Get `resume_id` from response
+3. Tailor for job → `POST /api/resume/tailor` (requires OPENROUTER_API_KEY)
+4. Download PDF → `GET /api/resume/{id}/download`
+5. Check events → `GET /api/resume/events/{id}`
+
+## Event Logs
+
+All resume operations are logged to `resume_events` table:
+- `upload_started` → `extraction_completed` → `upload_completed`
+- `tailoring_started` → `llm_response_received` → `llm_validated` → `tailoring_completed`
+- `tailoring_failed` (on error)

@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import auth, users, jobs, applications, credits
+from app.api.routes import resumes
 from app.services.database import init_db
 import os
 
@@ -29,6 +30,7 @@ def create_app() -> FastAPI:
     app.include_router(jobs.router, prefix="/api", tags=["jobs"])
     app.include_router(applications.router, prefix="/api", tags=["applications"])
     app.include_router(credits.router, prefix="/api", tags=["credits"])
+    app.include_router(resumes.router, prefix="/api", tags=["resumes"])
 
     @app.get("/api/health")
     async def health_check():
