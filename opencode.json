@@ -87,6 +87,25 @@
             "environment": {
                 "STRIPE_SECRET_KEY": "${STRIPE_SECRET_KEY}"
             }
+        },
+        "vibe-check": {
+            "type": "local",
+            "enabled": true,
+            "command": [
+                "npx",
+                "-y",
+                "@pv-bhat/vibe-check-mcp"
+            ]
+        },
+        "21st-dev": {
+            "type": "local",
+            "enabled": true,
+            "command": [
+                "npx",
+                "-y",
+                "@21st-dev/magic@latest",
+                "API_KEY=${TWENTY_FIRST_DEV_API_KEY}"
+            ]
         }
     }
 }
