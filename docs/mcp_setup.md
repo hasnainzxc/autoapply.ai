@@ -2,6 +2,8 @@
 
 This guide explains how to set up all MCP (Model Context Protocol) servers for the ApplyMate OpenCode + Antigravity workflow.
 
+> **Important**: See `docs/GIT_WORKFLOW.md` for proper git workflow - always use PRs, never push directly to main.
+
 ---
 
 ## Quick Start
