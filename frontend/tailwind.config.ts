@@ -8,7 +8,19 @@ const config: Config = {
   ],
   theme: {
   	extend: {
-  		colors: {
+      colors: {
+        cyber: {
+          yellow: "#FDE047",
+        },
+        onyx: {
+          DEFAULT: "#0A0A0A",
+        },
+        charcoal: {
+          DEFAULT: "#171717",
+        },
+        deep: {
+          gray: "#262626",
+        },
   			background: 'hsl(var(--background))',
   			foreground: 'hsl(var(--foreground))',
   			card: {
@@ -50,11 +62,41 @@ const config: Config = {
   				'5': 'hsl(var(--chart-5))'
   			}
   		},
-  		borderRadius: {
-  			lg: 'var(--radius)',
-  			md: 'calc(var(--radius) - 2px)',
-  			sm: 'calc(var(--radius) - 4px)'
-  		}
+      borderRadius: {
+        "pill": "9999px",
+        "liquid-sm": "40px",
+        "liquid-md": "80px",
+        "liquid-lg": "120px",
+        "glass": "32px",
+        lg: 'var(--radius)',
+        md: 'calc(var(--radius) - 2px)',
+        sm: 'calc(var(--radius) - 4px)'
+      },
+      animation: {
+        "float": "float 6s ease-in-out infinite",
+        "drift": "drift 8s ease-in-out infinite",
+        "squish": "squish 0.2s ease-out",
+        "liquid-in": "liquidIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) forwards",
+      },
+      keyframes: {
+        float: {
+          "0%, 100%": { transform: "translateY(0px)" },
+          "50%": { transform: "translateY(-10px)" },
+        },
+        drift: {
+          "0%, 100%": { transform: "translateY(0px) translateX(0px)" },
+          "50%": { transform: "translateY(-15px) translateX(5px)" },
+        },
+        squish: {
+          "0%": { transform: "scale(1)" },
+          "50%": { transform: "scale(0.95)" },
+          "100%": { transform: "scale(1)" },
+        },
+        liquidIn: {
+          "0%": { opacity: "0", transform: "translateY(40px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+      },
   	}
   },
   plugins: [require("tailwindcss-animate")],

@@ -2,17 +2,22 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { UserButton, useUser } from "@clerk/nextjs";
+import { useUser, UserButton } from "@clerk/nextjs";
 import { Zap, ChevronRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
-export function Navbar() {
+interface NavbarProps {
+  variant?: "default" | "subtle";
+}
+
+export function Navbar({ variant = "default" }: NavbarProps) {
   const pathname = usePathname();
-  const { user } = useUser();
+  const { user, isLoaded } = useUser();
 
   const isLanding = pathname === "/";
-  const isAuthPage = pathname?.startsWith("/sign-") || pathname === "/";
+  const isAuthPage = pathname?.startsWith("/sign-");
 
-  if (isAuthPage && !user) return null;
+  if (!isLoaded) return null;
 
   const navItems = [
     { href: "/dashboard", label: "Dashboard" },
@@ -21,55 +26,76 @@ export function Navbar() {
     { href: "/applications", label: "Applications" },
   ];
 
+  const isSubtle = variant === "subtle";
+
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 bg-black/60 backdrop-blur-2xl border-b border-white/5">
+    <nav className={`fixed top-0 left-0 right-0 z-50 backdrop-blur-2xl border-b transition-all ${
+      isSubtle 
+        ? "bg-onyx/60 border-white/5" 
+        : "bg-onyx/80 border-white/5"
+    }`}>
       <div className="max-w-7xl mx-auto px-6">
         <div className="flex items-center justify-between h-16">
-          {/* Logo */}
           <Link href="/" className="flex items-center gap-3 group">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center shadow-lg shadow-violet-500/20 group-hover:scale-105 transition-transform">
-              <Zap className="w-5 h-5 text-white" />
+            <div className="w-9 h-9 rounded-xl bg-cyber-yellow flex items-center justify-center shadow-lg shadow-cyber-yellow/20 group-hover:scale-105 transition-transform">
+              <Zap className="w-5 h-5 text-black" />
             </div>
-            <span className="text-lg font-semibold text-white">ApplyMate</span>
+            <span className={`text-lg font-semibold ${isSubtle ? "text-white" : "text-white"}`}>ApplyMate</span>
           </Link>
 
-          {/* Nav Items */}
-          <div className="hidden md:flex items-center gap-1">
-            {navItems.map((item) => {
-              const isActive = pathname?.startsWith(item.href);
-              return (
+          {user ? (
+            <div className="flex items-center gap-4">
+              <div className="hidden md:flex items-center gap-1">
+                {navItems.map((item) => {
+                  const isActive = pathname?.startsWith(item.href);
+                  return (
+                    <Link
+                      key={item.href}
+                      href={item.href}
+                      className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                        isActive
+                          ? "bg-cyber-yellow text-black"
+                          : "text-zinc-400 hover:text-white hover:bg-white/5"
+                      }`}
+                    >
+                      {item.label}
+                    </Link>
+                  );
+                })}
+              </div>
+              <div className="flex items-center gap-3">
                 <Link
-                  key={item.href}
-                  href={item.href}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                    isActive
-                      ? "bg-white/10 text-white"
-                      : "text-zinc-400 hover:text-white hover:bg-white/5"
-                  }`}
+                  href="/credits"
+                  className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/5 text-sm text-zinc-300 hover:text-white transition-all"
                 >
-                  {item.label}
+                  <span className="w-2 h-2 rounded-full bg-cyber-yellow" />
+                  <span>Credits</span>
+                  <ChevronRight className="w-3 h-3 text-zinc-500" />
                 </Link>
-              );
-            })}
-          </div>
-
-          {/* Right Section */}
-          <div className="flex items-center gap-4">
-            {/* Credits */}
-            <Link
-              href="/credits"
-              className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-lg bg-zinc-900/60 hover:bg-zinc-800 border border-white/5 text-sm text-zinc-300 hover:text-white transition-all"
-            >
-              <span className="w-2 h-2 rounded-full bg-emerald-400" />
-              <span>Credits</span>
-              <ChevronRight className="w-3 h-3 text-zinc-500" />
-            </Link>
-            
-            {/* User */}
-            <div className="w-9 h-9 rounded-full overflow-hidden ring-2 ring-white/10 hover:ring-violet-500/50 transition-all">
-              <UserButton afterSignOutUrl="/" />
+                <div className="w-9 h-9 rounded-full overflow-hidden ring-2 ring-cyber-yellow/30 hover:ring-cyber-yellow/60 transition-all">
+                  <UserButton afterSignOutUrl="/" />
+                </div>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                className={isSubtle ? "text-zinc-300 hover:text-white hover:bg-white/5" : "text-zinc-300 hover:text-white hover:bg-white/5"}
+                onClick={() => window.location.href = "/sign-in"}
+              >
+                Sign In
+              </Button>
+              <Button 
+                size="sm" 
+                className="rounded-full bg-cyber-yellow text-black hover:bg-cyber-yellow/90"
+                onClick={() => window.location.href = "/sign-up"}
+              >
+                Get Started
+              </Button>
+            </div>
+          )}
         </div>
       </div>
     </nav>
