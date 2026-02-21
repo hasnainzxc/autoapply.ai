@@ -1,5 +1,4 @@
 import { ClerkProvider } from "@clerk/nextjs";
-import { dark } from "@clerk/themes";
 import "./globals.css";
 
 export const metadata = {
@@ -16,16 +15,44 @@ export default function RootLayout({
     <ClerkProvider
       publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
       appearance={{
-        baseTheme: dark,
         variables: {
-          colorPrimary: "#6366f1",
-          colorBackground: "#0f172a",
-          colorText: "#f8fafc",
+          colorPrimary: "#FACC15",
+          colorBackground: "#080808",
+          colorText: "#E4E2DD",
+          colorTextOnPrimaryBackground: "#080808",
+          colorInputBackground: "#1A1A1A",
+          colorInputText: "#E4E2DD",
+          borderRadius: "8px",
+          fontFamily: "'Space Grotesk', sans-serif",
+        },
+        elements: {
+          formButtonPrimary: {
+            background: "#FACC15",
+            color: "#080808",
+            "&:hover": {
+              background: "#EAB308",
+            },
+          },
+          card: {
+            background: "#1A1A1A",
+            border: "1px solid rgba(255, 255, 255, 0.1)",
+          },
+          input: {
+            background: "#1A1A1A",
+            border: "1px solid rgba(255, 255, 255, 0.1)",
+            color: "#E4E2DD",
+          },
         },
       }}
     >
       <html lang="en">
-        <body className="bg-slate-950 text-slate-50 antialiased">
+        <head>
+          <link
+            href="https://api.fontshare.com/v2/css?f[]=clash-display@400,500,600,700&display=swap"
+            rel="stylesheet"
+          />
+        </head>
+        <body className="bg-[#080808] text-[#E4E2DD] antialiased min-h-screen">
           {children}
         </body>
       </html>

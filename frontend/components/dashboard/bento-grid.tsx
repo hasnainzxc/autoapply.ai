@@ -6,7 +6,7 @@ interface BentoCardProps {
   subtitle?: string;
   icon?: React.ReactNode;
   trend?: "up" | "down" | "neutral";
-  color?: "violet" | "cyan" | "emerald" | "amber";
+  color?: "violet" | "cyan" | "emerald" | "amber" | "yellow";
 }
 
 const colorMap = {
@@ -34,25 +34,31 @@ const colorMap = {
     icon: "text-amber-400",
     glow: "hover:shadow-[0_0_30px_-10px_rgba(251,191,36,0.3)]",
   },
+  yellow: {
+    bg: "from-[#FACC15]/10 to-[#FACC15]/5",
+    border: "hover:border-[#FACC15]/30",
+    icon: "text-[#FACC15]",
+    glow: "hover:shadow-[0_0_30px_-10px_rgba(250,204,21,0.3)]",
+  },
 };
 
-export function BentoCard({ title, value, subtitle, icon, trend, color = "violet" }: BentoCardProps) {
+export function BentoCard({ title, value, subtitle, icon, trend, color = "yellow" }: BentoCardProps) {
   const colors = colorMap[color];
 
   return (
-    <div className={`glass-card p-6 rounded-2xl bg-gradient-to-br ${colors.bg} border-white/5 ${colors.border} ${colors.glow} transition-all duration-300`}>
+    <div className={`glass-card p-6 rounded-xl bg-gradient-to-br ${colors.bg} border-white/5 ${colors.border} ${colors.glow} transition-all duration-300`}>
       <div className="flex items-start justify-between">
         <div>
-          <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-2">{title}</p>
-          <p className="text-4xl font-bold text-white tracking-tight">{value}</p>
-          {subtitle && <p className="text-sm text-zinc-500 mt-2">{subtitle}</p>}
+          <p className="text-xs font-medium text-[#6B6B6B] uppercase tracking-wider mb-2">{title}</p>
+          <p className="text-4xl font-bold text-[#E4E2DD] tracking-tight">{value}</p>
+          {subtitle && <p className="text-sm text-[#6B6B6B] mt-2">{subtitle}</p>}
         </div>
         {icon && <div className={colors.icon}>{icon}</div>}
       </div>
       {trend && (
         <div className={`mt-4 text-sm font-medium ${
-          trend === "up" ? "text-emerald-400" : 
-          trend === "down" ? "text-red-400" : "text-zinc-400"
+          trend === "up" ? "text-[#22C55E]" : 
+          trend === "down" ? "text-[#EF4444]" : "text-[#6B6B6B]"
         }`}>
           {trend === "up" ? "↑" : trend === "down" ? "↓" : "→"} 
         </div>
@@ -68,7 +74,7 @@ export function BentoGrid() {
         title="Active Agents" 
         value={3} 
         subtitle="Currently running"
-        color="violet"
+        color="yellow"
         icon={
           <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 10V3L4 14h7v7l9-11h-7z" />
