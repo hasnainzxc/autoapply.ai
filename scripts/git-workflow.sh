@@ -1,126 +1,182 @@
 #!/bin/bash
-# Git Workflow Automation Script
+# ApplyMate Git Workflow Script
 # Usage: ./scripts/git-workflow.sh [command]
 
 set -e
 
-REPO="hasnainzxc/autoapply.ai"
-BRANCH="feature/hyper-saturated-fluid-design"
+REPO_OWNER="hasnainzxc"
+REPO_NAME="autoapply.ai"
+BRANCH=$(git branch --show-current)
 
-check_conflicts() {
-    echo "=== Checking for conflicts on $BRANCH ==="
-    
-    git fetch origin main
-    
-    git merge origin/main --no-commit --no-ff 2>&1 || true
-    
-    if git diff --name-only --diff-filter=U | grep -q .; then
-        echo "⚠️  CONFLICTS FOUND:"
-        echo ""
-        git diff --name-only --diff-filter=U | while read file; do
-            echo "  - $file"
-        done
-        echo ""
-        echo "=== Conflict Details ==="
-        git diff --name-only --diff-filter=U | while read file; do
-            echo ""
-            echo "--- $file ---"
-            echo "<<<<<<< .our (your changes)"
-            git show :2:"$file" 2>/dev/null | head -10 || echo "(unavailable)"
-            echo "======="
-            git show :3:"$file" 2>/dev/null | head -10 || echo "(unavailable)"
-            echo ">>>>>>> .their (incoming)"
-        done
-        echo ""
-        echo "To resolve: git merge --abort && manually fix conflicts"
-        return 1
-    else
-        echo "✅ No conflicts found!"
-        git merge --abort 2>/dev/null || true
-        return 0
-    fi
+get_pr_info() {
+    gh pr view "$1" --json number,title,state,mergeable,additions,deletions,changedFiles,reviews,url 2>/dev/null
 }
 
-check_pr_status() {
-    echo "=== GitHub PR Status for $REPO ==="
-    gh pr list --state all --json number,title,state,mergeable
-}
-
-check_pr_conflicts() {
-    echo "=== Checking GitHub PR conflicts ==="
-    gh pr list --state OPEN --json number,mergeable | jq -r '.[] | "\(.number): mergeable=\(.mergeable)"'
+find_pr() {
+    gh pr list --head "$BRANCH" --state all --json number 2>/dev/null | jq -r '.[0].number // empty'
 }
 
 push_and_report() {
-    echo "=== Pushing to GitHub ==="
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "🚀 PUSHING TO GITHUB"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    # Get commits ahead
+    LOCAL=$(git rev-parse HEAD)
+    REMOTE=$(git rev-parse origin/$BRANCH 2>/dev/null || echo "")
+    
+    if [ "$LOCAL" = "$REMOTE" ]; then
+        echo "⚠️  Branch is up to date, nothing to push"
+        return
+    fi
+    
+    # Push
     git push
     
     echo ""
-    echo "=== PR Status Report ==="
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "📋 PR STATUS REPORT"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
-    # Find open PR for current branch
-    PR_INFO=$(gh pr view $(git branch --show-current) --json number,title,state,mergeable,additions,deletions,changedFiles,reviews 2>/dev/null || gh pr list --head $(git branch --show-current) --json number | jq -r '.[0].number // "none"')
+    # Find or create PR
+    PR_NUM=$(find_pr)
     
-    if [ "$PR_INFO" != "none" ] && [ "$PR_INFO" != "" ]; then
-        PR_NUM=$(echo "$PR_INFO" | jq -r '.number // empty' 2>/dev/null || echo "$PR_INFO")
-        
-        if [ -n "$PR_NUM" ] && [ "$PR_NUM" != "null" ]; then
-            echo "PR #$PR_NUM:"
-            gh pr view "$PR_NUM" --json number,title,state,mergeable,additions,deletions,changedFiles 2>/dev/null | jq -r '
-                "  Title: \(.title)
-                State: \(.state)
-                Mergeable: \(.mergeable // "unknown")
-                Files: \(.changedFiles // 0) changed
-                +\(.additions // 0) / -\(.deletions // 0)"
-            '
-        fi
-    else
-        echo "No open PR found for current branch"
+    if [ -z "$PR_NUM" ]; then
+        echo "📝 No PR found for branch '$BRANCH'"
+        echo "   Create one with: gh pr create --base main --head $BRANCH"
+        return
+    fi
+    
+    echo ""
+    echo "PR #$PR_NUM:"
+    
+    # Get PR details
+    PR_INFO=$(get_pr_info $PR_NUM)
+    
+    STATE=$(echo "$PR_INFO" | jq -r '.state')
+    MERGEABLE=$(echo "$PR_INFO" | jq -r '.mergeable // "UNKNOWN"')
+    ADDITIONS=$(echo "$PR_INFO" | jq -r '.additions // 0')
+    DELETIONS=$(echo "$PR_INFO" | jq -r '.deletions // 0')
+    FILES=$(echo "$PR_INFO" | jq -r '.changedFiles // 0')
+    URL=$(echo "$PR_INFO" | jq -r '.url')
+    REVIEWS=$(echo "$PR_INFO" | jq -r '.reviews | length')
+    
+    # Status with emoji
+    case $STATE in
+        "OPEN") STATE_EMOJI="🟢" ;;
+        "MERGED") STATE_EMOJI="✅" ;;
+        "CLOSED") STATE_EMOJI="🔴" ;;
+        *) STATE_EMOJI="⚪" ;;
+    esac
+    
+    case $MERGEABLE in
+        "true") MERGE_EMOJI="✅" ;;
+        "false") MERGE_EMOJI="⚠️ " ;;
+        *) MERGE_EMOJI="⏳" ;;
+    esac
+    
+    echo "   $STATE_EMOJI State: $STATE"
+    echo "   $MERGE_EMOJI Mergeable: $MERGEABLE"
+    echo "   📁 Files: $FILES"
+    echo "   ➕ +$ADDITIONS / -$DELETIONS lines"
+    echo "   👀 Reviews: $REVIEWS"
+    echo ""
+    echo "   🔗 $URL"
+    
+    # Check if conflicts exist
+    if [ "$MERGEABLE" = "false" ]; then
+        echo ""
+        echo "⚠️  CONFLICTS DETECTED - Action Required"
+        echo "   Run: ./scripts/git-workflow.sh resolve"
     fi
 }
 
-resolve_and_push() {
-    echo "=== Resolving conflicts and pushing ==="
+resolve_conflicts() {
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "🔧 RESOLVING CONFLICTS"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     
     git fetch origin main
-    git merge origin/main --no-commit --no-ff 2>&1 || true
     
-    if git diff --name-only --diff-filter=U | grep -q .; then
-        echo "Conflicts found. Using --theirs to keep incoming changes..."
-        git checkout --theirs $(git diff --name-only --diff-filter=U)
-        git add -A
-        git commit -m "merge: resolve conflicts with main"
+    if git merge origin/main --no-commit --no-ff 2>&1 | grep -q "Conflict"; then
+        CONFLICTS=$(git diff --name-only --diff-filter=U)
+        
+        if [ -n "$CONFLICTS" ]; then
+            echo "Conflicted files:"
+            echo "$CONFLICTS" | sed 's/^/   - /'
+            echo ""
+            echo "Resolving with --theirs (keeping incoming main changes)..."
+            git checkout --theirs $(git diff --name-only --diff-filter=U) 2>/dev/null || true
+            git add -A
+            git commit -m "merge: resolve conflicts with main"
+            echo "✅ Conflicts resolved and committed"
+        fi
     else
-        echo "No conflicts - completing merge commit"
-        git commit --no-edit
+        echo "No conflicts found"
+        git merge --abort 2>/dev/null || true
     fi
     
     push_and_report
 }
 
-case "${1:-all}" in
-    conflicts)
-        check_conflicts
-        ;;
-    pr-status)
-        check_pr_status
-        ;;
-    pr-conflicts)
-        check_pr_conflicts
-        ;;
+check_status() {
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    echo "📊 REPO STATUS"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+    
+    echo ""
+    echo "📂 Open PRs:"
+    gh pr list --state OPEN --json number,title,mergeable | jq -r '.[] | "   #\(.number): \(.title) [mergeable=\(.mergeable)]"'
+    
+    echo ""
+    echo "🌿 Current Branch: $BRANCH"
+    
+    # Check if branch is ahead/behind
+    AHEAD=$(git rev-list --count origin/main..HEAD 2>/dev/null || echo "0")
+    BEHIND=$(git rev-list --count HEAD..origin/main 2>/dev/null || echo "0")
+    
+    if [ "$AHEAD" -gt 0 ]; then
+        echo "   ↑ $AHEAD commits ahead of main"
+    fi
+    if [ "$BEHIND" -gt 0 ]; then
+        echo "   ↓ $BEHIND commits behind main"
+    fi
+    
+    # Check for uncommitted changes
+    if ! git diff --quiet || ! git diff --cached --quiet; then
+        echo "   ⚠️  Uncommitted changes present"
+    fi
+    
+    # Check PR for current branch
+    PR_NUM=$(find_pr)
+    if [ -n "$PR_NUM" ]; then
+        echo ""
+        echo "📋 PR #$PR_NUM:"
+        PR_INFO=$(get_pr_info $PR_NUM)
+        STATE=$(echo "$PR_INFO" | jq -r '.state')
+        MERGEABLE=$(echo "$PR_INFO" | jq -r '.mergeable // "UNKNOWN"')
+        
+        echo "   State: $STATE"
+        echo "   Mergeable: $MERGEABLE"
+        
+        if [ "$MERGEABLE" = "false" ]; then
+            echo "   ⚠️  Has conflicts - run './scripts/git-workflow.sh resolve'"
+        fi
+    fi
+}
+
+case "${1:-status}" in
     push)
         push_and_report
         ;;
     resolve)
-        resolve_and_push
+        resolve_conflicts
         ;;
-    all)
-        check_pr_conflicts
-        echo ""
-        check_conflicts
+    status|check)
+        check_status
         ;;
     *)
-        echo "Usage: $0 {conflicts|pr-status|pr-conflicts|push|resolve|all}"
+        echo "Usage: $0 {push|resolve|status}"
         exit 1
         ;;
 esac
