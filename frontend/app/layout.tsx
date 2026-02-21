@@ -4,6 +4,7 @@ import "./globals.css";
 export const metadata = {
   title: "ApplyMate - AI Job Application Automation",
   description: "Automate your job search with AI-powered resume tailoring and applications",
+  viewport: "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no",
 };
 
 export default function RootLayout({
@@ -52,7 +53,7 @@ export default function RootLayout({
             rel="stylesheet"
           />
         </head>
-        <body className="bg-[#080808] text-[#E4E2DD] antialiased min-h-screen">
+        <body className="bg-[#080808] text-[#E4E2DD] antialiased min-h-screen safe-area-inset">
           {children}
         </body>
       </html>
