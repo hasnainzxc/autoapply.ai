@@ -69,13 +69,6 @@ February 2026
 }
 ```
 
-#### Pill Button Styles
-```css
-.pill-btn-solid { bg-black text-white }
-.pill-btn-primary { bg-cyber-yellow text-black }
-.pill-btn-outline { border-2 border-black/20 }
-```
-
 ---
 
 ### 3. Components Created/Updated

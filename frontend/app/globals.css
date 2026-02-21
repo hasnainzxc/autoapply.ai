@@ -92,35 +92,6 @@ h1, h2, h3, h4, h5, h6 {
     @apply hover:scale-105 hover:shadow-lg active:scale-95;
   }
   
-  .pill-btn-solid {
-    @apply bg-black text-white hover:bg-zinc-900;
-  }
-  
-  .pill-btn-primary {
-    @apply bg-cyber-yellow text-black hover:shadow-[0_0_30px_-5px_rgba(253,224,71,0.5)];
-  }
-  
-  .pill-btn-outline {
-    @apply border-2 border-black/20 text-black hover:border-black/40 bg-white;
-  }
-  
-  .pill-btn-outline-light {
-    @apply border-2 border-white/20 text-white hover:border-white/40 bg-transparent;
-  }
-  
-  .liquid-hero {
-    @apply bg-cyber-yellow rounded-b-[120px] rounded-bl-[40px];
-  }
-  
-  .liquid-wave {
-    background: linear-gradient(180deg, transparent 50%, #0A0A0A 50%);
-    clip-path: ellipse(150% 100% at 50% 0%);
-  }
-  
-  .void-section {
-    @apply bg-onyx;
-  }
-  
   .label {
     @apply text-[10px] uppercase tracking-widest font-medium;
   }
