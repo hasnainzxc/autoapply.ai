@@ -33,24 +33,6 @@
                 "SUPABASE_DB_URL": "${SUPABASE_DB_URL}"
             }
         },
-        "fetch": {
-            "type": "local",
-            "enabled": true,
-            "command": [
-                "npx",
-                "-y",
-                "@modelcontextprotocol/server-fetch"
-            ]
-        },
-        "memory": {
-            "type": "local",
-            "enabled": true,
-            "command": [
-                "npx",
-                "-y",
-                "@modelcontextprotocol/server-memory"
-            ]
-        },
         "github": {
             "type": "local",
             "enabled": true,
