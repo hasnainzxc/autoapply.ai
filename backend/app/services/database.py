@@ -6,7 +6,10 @@ from datetime import datetime
 import uuid
 import os
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/applymate")
+DATABASE_URL = os.getenv("DATABASE_URL")
+
+if not DATABASE_URL or (DATABASE_URL.startswith("${{") or DATABASE_URL.startswith("{{")):
+    raise ValueError("DATABASE_URL is not set. Please configure DATABASE_URL in Railway variables.")
 
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
