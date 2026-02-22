@@ -1,14 +1,3 @@
 {
-  "$schema": "https://railway.app/railway.schema.json",
-  "build": {
-    "builder": "NIXPACKS",
-    "primaryRegion": "us-west1"
-  },
-  "deploy": {
-    "numReplicas": 1,
-    "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 10,
-    "preDeployCommand": "cd backend && pip install -r requirements.txt",
-    "startCommand": "cd backend && python -m uvicorn app.main:app --host 0.0.0.0 --port $PORT"
-  }
+  "$schema": "https://railway.app/railway.schema.json"
 }
