@@ -101,6 +101,7 @@ AI-powered job application automation platform that streamlines your job search 
 
 ## How to Run
 
+### Local Development
 ```bash
 # Start everything
 ./start.sh
@@ -114,9 +115,12 @@ cd backend && PYTHONPATH=/home/hairzee/prods/applymate/backend python -m uvicorn
 cd frontend && npm run dev
 ```
 
-**Urls:**
-- Frontend: http://localhost:3000
-- Backend: http://localhost:8000
+### Production URLs
+- **Frontend (Vercel):** https://autoapply-ai-git-main-hasnainzxcs-projects.vercel.app/
+- **Frontend (Local):** http://localhost:3000
+- **Backend (Render):** [Deploy pending - set NEXT_PUBLIC_API_URL]
+
+> **Note:** When backend is deployed to Render, set `NEXT_PUBLIC_API_URL` in Vercel to your Render backend URL (e.g., `https://applymate-backend.onrender.com`)
 
 ---
 
