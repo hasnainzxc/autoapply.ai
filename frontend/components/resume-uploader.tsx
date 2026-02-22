@@ -31,8 +31,10 @@ export function ResumeUploader({ onUploadComplete }: ResumeUploaderProps) {
     const formData = new FormData();
     formData.append("file", file);
 
+    const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
     try {
-      const res = await fetch("http://localhost:8000/api/resume/upload", {
+      const res = await fetch(`${API_URL}/api/resume/upload`, {
         method: "POST",
         body: formData,
       });

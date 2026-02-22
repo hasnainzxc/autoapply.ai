@@ -19,6 +19,8 @@ import {
   Loader2
 } from "lucide-react";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 interface Resume {
   id: string;
   original_file_path: string;
@@ -279,7 +281,7 @@ export default function ResumesPage() {
 
   const fetchResumes = async () => {
     try {
-      const res = await fetch("http://localhost:8000/api/resumes");
+      const res = await fetch(`${API_URL}/api/resumes`);
       if (res.ok) {
         const data = await res.json();
         const resumeList = (data.resumes || []).map((r: Resume) => ({
@@ -303,7 +305,7 @@ export default function ResumesPage() {
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const res = await fetch("http://localhost:8000/api/resume/upload", { method: "POST", body: formData });
+      const res = await fetch(`${API_URL}/api/resume/upload`, { method: "POST", body: formData });
       if (res.ok) {
         const data = await res.json();
         const newResume: Resume = { 
@@ -322,7 +324,7 @@ export default function ResumesPage() {
 
   const handleDelete = async (id: string) => {
     try {
-      const res = await fetch(`http://localhost:8000/api/resumes/${id}`, { method: "DELETE" });
+      const res = await fetch(`${API_URL}/api/resumes/${id}`, { method: "DELETE" });
       if (res.ok || res.status === 404) {
         setResumes((prev) => prev.filter(r => r.id !== id));
         if (selectedResume === id) setSelectedResume(null);
@@ -346,7 +348,7 @@ export default function ResumesPage() {
       const formData = new FormData();
       formData.append("resume_id", selectedResume);
       formData.append("job_description", jobDescription);
-      const res = await fetch("http://localhost:8000/api/resume/tailor", { method: "POST", body: formData });
+      const res = await fetch(`${API_URL}/api/resume/tailor`, { method: "POST", body: formData });
       if (res.ok) {
         const data = await res.json();
         setTailoredResumes((prev) => [{ id: data.tailored_resume_id, job_description: jobDescription, status: "completed", pdf_path: data.pdf_path, created_at: new Date().toISOString() }, ...prev]);
@@ -356,7 +358,7 @@ export default function ResumesPage() {
     finally { setTailoring(false); }
   };
 
-  const downloadPDF = (url: string) => { window.open(`http://localhost:8000${url}`, "_blank"); };
+  const downloadPDF = (url: string) => { window.open(`${API_URL}${url}`, "_blank"); };
 
   const lastUsedResumeName = resumes.find(r => r.id === lastUsedResume)?.name || 
     (resumes.find(r => r.id === lastUsedResume) ? extractResumeName(resumes.find(r => r.id === lastUsedResume)!.original_file_path) : null);

@@ -5,6 +5,8 @@ import { motion } from "framer-motion";
 import { Mail, Loader2, Download, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 interface CoverLetterGeneratorProps {
   resumeId: string;
   jobDescription: string;
@@ -27,7 +29,7 @@ export function CoverLetterGenerator({ resumeId, jobDescription, onClose }: Cove
       formData.append("company_name", "");
       formData.append("hiring_manager", "");
 
-      const res = await fetch("http://localhost:8000/api/resume/cover-letter", {
+      const res = await fetch(`${API_URL}/api/resume/cover-letter`, {
         method: "POST",
         body: formData,
       });
@@ -51,7 +53,7 @@ export function CoverLetterGenerator({ resumeId, jobDescription, onClose }: Cove
   };
 
   const downloadPdf = () => {
-    window.open(`http://localhost:8000${pdfUrl}`, "_blank");
+    window.open(`${API_URL}${pdfUrl}`, "_blank");
   };
 
   return (

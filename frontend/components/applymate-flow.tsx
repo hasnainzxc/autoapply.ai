@@ -34,9 +34,11 @@ export function ApplyMateFlow() {
     setStep("analysis");
   };
 
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
   const handleDownloadResume = () => {
     if (tailoredResumeId) {
-      window.open(`http://localhost:8000/api/resume/${tailoredResumeId}/download`, "_blank");
+      window.open(`${API_URL}/api/resume/${tailoredResumeId}/download`, "_blank");
     }
   };
 

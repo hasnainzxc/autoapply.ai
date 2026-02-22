@@ -4,6 +4,8 @@ import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Terminal, ChevronRight, Loader2, Sparkles, Link, FileText } from "lucide-react";
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+
 interface JobTerminalProps {
   resumeId: string;
   onAnalysisComplete: (data: AnalysisData, tailoredId: string) => void;
@@ -50,7 +52,7 @@ export function JobTerminal({ resumeId, onAnalysisComplete, onJobDescriptionChan
       formData.append("job_description", content);
       formData.append("template", "default");
 
-      const res = await fetch("http://localhost:8000/api/resume/tailor", {
+      const res = await fetch(`${API_URL}/api/resume/tailor`, {
         method: "POST",
         body: formData,
       });
