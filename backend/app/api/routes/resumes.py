@@ -640,6 +640,8 @@ Return ONLY the cover letter text, no formatting or markdown.
         result = response.json()
         cover_letter = result["choices"][0]["message"]["content"]
         
+        formatted_cover_letter = cover_letter.replace('\n\n', '</div><div class="body">')
+        
         from weasyprint import HTML
         html_content = f"""
 <!DOCTYPE html>
@@ -658,7 +660,7 @@ Return ONLY the cover letter text, no formatting or markdown.
     <div class="date">{company_name or "Dear Hiring Manager"}</div>
     <div class="salutation">Dear {hiring_manager or "Hiring Manager"},</div>
     <div class="body">
-        {cover_letter.replace('\n\n', '</div><div class="body">')}
+        {formatted_cover_letter}
     </div>
     <div class="closing">Sincerely,</div>
     <div class="signature">{current_user}</div>
