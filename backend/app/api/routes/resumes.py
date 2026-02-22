@@ -31,14 +31,15 @@ async def list_resumes(
                 "id": str(r.id),
                 "original_file_path": r.original_file_path,
                 "extracted_text": r.extracted_text,
-                "created_at": r.created_at.isoformat() if r.created_at else None
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+                "last_used": r.created_at.isoformat() if r.created_at else None
             }
             for r in resumes
         ],
         "tailored": [
             {
                 "id": str(t.id),
-                "job_description": t.job_description[:50] + "..." if t.job_description and len(t.job_description) > 50 else t.job_description,
+                "job_description": t.job_description[:50] + "..." if t.job_description and len(t.job_description or "") > 50 else t.job_description,
                 "status": t.status,
                 "pdf_path": t.pdf_path,
                 "created_at": t.created_at.isoformat() if t.created_at else None
@@ -46,6 +47,43 @@ async def list_resumes(
             for t in tailored
         ]
     }
+
+
+@router.delete("/resumes/{resume_id}")
+async def delete_resume(
+    resume_id: str,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user)
+):
+    """Delete a resume and its associated data"""
+    try:
+        resume_uuid = uuid.UUID(resume_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid resume ID")
+    
+    resume = db.query(Resume).filter(
+        Resume.id == resume_uuid,
+        Resume.user_id == current_user
+    ).first()
+    
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    
+    try:
+        if resume.original_file_path and os.path.exists(resume.original_file_path):
+            os.remove(resume.original_file_path)
+    except Exception:
+        pass
+    
+    db.query(TailoredResume).filter(TailoredResume.resume_id == resume_uuid).delete()
+    db.query(ResumeEvent).filter(ResumeEvent.tailored_resume_id.in_(
+        db.query(TailoredResume.id).filter(TailoredResume.resume_id == resume_uuid)
+    )).delete(synchronize_session=False)
+    
+    db.delete(resume)
+    db.commit()
+    
+    return {"status": "deleted", "resume_id": resume_id}
 
 
 def log_resume_event(db: Session, tailored_resume_id: uuid.UUID, event_type: str, message: str, payload: dict = None):
@@ -200,35 +238,92 @@ async def tailor_resume(
     try:
         import httpx
         
-        prompt = f"""You are an expert resume writer. Tailor the following resume to match the job description.
+        prompt = f"""You are an elite ATS (Applicant Tracking System) optimization expert and career strategist. Your task is to transform a generic resume into a HIGH-CONVERSION, ATS-optimized powerhouse that gets interviews.
 
-Resume:
+## INPUT
+
+**ORIGINAL RESUME:**
 {resume.extracted_text}
 
-Job Description:
+**TARGET JOB DESCRIPTION:**
 {job_description}
 
-Return ONLY valid JSON with this exact structure:
+## CRITICAL ANALYSIS REQUIRED
+
+Before generating output, you MUST analyze:
+
+1. **Job Keywords Extraction**: Identify:
+   - Required skills (hard skills, soft skills)
+   - Preferred qualifications
+   - Industry-specific terminology
+   - Action verbs used in the job posting
+
+2. **ATS Scoring Criteria** (rate each 0-100):
+   - Keyword match rate
+   - Format optimization (no tables, columns)
+   - Quantified achievements
+   - Industry relevance
+   - Impact statements
+
+3. **Gap Analysis**: What skills/experience is the candidate missing?
+
+## OUTPUT FORMAT - Return ONLY valid JSON:
+
 {{
-    "summary": "2-3 sentence professional summary",
-    "key_skills": ["skill1", "skill2", "skill3"],
+    "ats_score_estimate": <number 0-100>,
+    "ats_analysis": {{
+        "keyword_match_rate": <percentage>,
+        "format_score": <0-100>,
+        "achievement_score": <0-100>,
+        "impact_score": <0-100>
+    }},
+    "matched_keywords": [<list of keywords from resume that match job>],
+    "missing_keywords": [<list of important job keywords missing in resume>],
+    "summary": "<3-4 sentence IMPACT-FOCUSED summary. Start with years of experience + key value proposition. Include 2-3 relevant keywords naturally. NO generic filler>",
+    "key_skills": [<list of 8-15 most relevant skills, prioritized by job relevance>],
     "work_experience": [
         {{
-            "title": "Job Title",
-            "company": "Company Name", 
-            "duration": "Jan 2020 - Present",
-            "achievements": ["Achievement 1", "Achievement 2"]
+            "title": "<Job Title>",
+            "company": "<Company Name>",
+            "duration": "<Date Range>",
+            "achievements": [
+                "<REWRITTEN achievement using: Action verb + metric + context. Example: 'Increased revenue by 40% through implementing AI-driven customer segmentation, resulting in $2M additional annual income'>",
+                "<Another quantified achievement>"
+            ],
+            "ats_optimization_tips": ["<specific tip for this role>"]
         }}
     ],
-    "education": [
-        {{
-            "degree": "Degree Name",
-            "institution": "University Name",
-            "year": "2020"
-        }}
+    "education": [<relevant education>],
+    "optimization_suggestions": [
+        "<specific actionable suggestion 1>",
+        "<specific actionable suggestion 2>",
+        "<specific actionable suggestion 3>"
     ],
-    "ats_score_estimate": 85
+    "cover_letter_points": [
+        "<2-3 key points to mention in cover letter that aren't in resume>"
+    ]
 }}
+
+## ACHIEVEMENT TRANSFORMATION RULES:
+
+❌ BAD: "Managed team of developers"
+✅ GOOD: "Led cross-functional team of 8 developers, delivering 12 enterprise applications that increased client retention by 35%"
+
+❌ BAD: "Improved website performance"
+✅ GOOD: "Optimized React application load time from 4.2s to 1.1s (74% improvement), boosting SEO rankings and reducing bounce rate by 28%"
+
+❌ BAD: "Worked with customers"
+✅ GOOD: "Interfaced with 50+ enterprise clients, handling escalations and maintaining 98% satisfaction rating"
+
+## CRITICAL REQUIREMENTS:
+
+1. QUANTIFY EVERY ACHIEVEMENT - Use numbers, percentages, $, time saved, people managed
+2. Use POWER VERBS: Led, Built, Created, Implemented, Optimized, Increased, Reduced, Delivered, Architected, Designed
+3. Include relevant keywords naturally (NOT stuffed)
+4. Keep descriptions concise but impactful
+5. Focus on business impact, not just duties
+
+Return ONLY valid JSON. No markdown, no explanations.
 """
         
         async with httpx.AsyncClient() as client:
@@ -303,37 +398,55 @@ Return ONLY valid JSON with this exact structure:
 <html>
 <head>
     <style>
-        body {{ font-family: Arial, sans-serif; margin: 40px; }}
-        h1 {{ color: #333; }}
-        h2 {{ color: #666; border-bottom: 1px solid #ccc; }}
-        .section {{ margin-bottom: 20px; }}
-        .skills {{ display: flex; flex-wrap: wrap; gap: 8px; }}
-        .skill {{ background: #e0e0e0; padding: 4px 12px; border-radius: 4px; }}
-        .experience {{ margin-bottom: 15px; }}
+        body {{ font-family: Arial, sans-serif; margin: 40px; color: #333; }}
+        h1 {{ color: #1a1a1a; margin-bottom: 5px; }}
+        .contact {{ color: #666; font-size: 12px; margin-bottom: 20px; }}
+        h2 {{ color: #2d3748; border-bottom: 2px solid #FACC15; padding-bottom: 5px; margin-top: 25px; }}
+        .section {{ margin-bottom: 15px; }}
+        .skills {{ display: flex; flex-wrap: wrap; gap: 6px; }}
+        .skill {{ background: #f7f7f7; padding: 4px 10px; border-radius: 3px; font-size: 12px; border: 1px solid #e0e0e0; }}
+        .experience {{ margin-bottom: 18px; }}
+        .job-title {{ font-weight: bold; color: #1a1a1a; }}
+        .company {{ color: #666; }}
+        .duration {{ color: #888; font-size: 12px; }}
+        .achievements {{ margin-left: 20px; }}
+        .achievements li {{ margin-bottom: 5px; color: #4a5568; }}
+        .ats-score {{ background: #FACC15; padding: 10px; border-radius: 5px; margin-bottom: 20px; font-weight: bold; }}
     </style>
 </head>
 <body>
     <h1>{current_user}</h1>
+    <div class="contact">ATS-Optimized Resume | Score: {structured.get('ats_score_estimate', 0)}/100</div>
+    
+    <div class="ats-score">
+        Match Score: {structured.get('ats_score_estimate', 0)}% | Keywords Matched: {len(structured.get('matched_keywords', []))} | Missing: {len(structured.get('missing_keywords', []))}
+    </div>
+
     <div class="section">
-        <h2>Summary</h2>
+        <h2>Professional Summary</h2>
         <p>{structured.get('summary', '')}</p>
     </div>
+
     <div class="section">
-        <h2>Key Skills</h2>
+        <h2>Key Skills (ATS-Optimized)</h2>
         <div class="skills">
             {''.join([f'<span class="skill">{s}</span>' for s in structured.get('key_skills', [])])}
         </div>
     </div>
+
     <div class="section">
-        <h2>Work Experience</h2>
+        <h2>Professional Experience</h2>
         {''.join([f'''
         <div class="experience">
-            <strong>{exp.get('title', '')}</strong> at {exp.get('company', '')}<br>
-            <em>{exp.get('duration', '')}</em><br>
-            <ul>{''.join([f'<li>{a}</li>' for a in exp.get('achievements', [])])}</ul>
+            <span class="job-title">{exp.get('title', '')}</span>
+            <span class="company"> at {exp.get('company', '')}</span>
+            <br>
+            <span class="duration">{exp.get('duration', '')}</span>
+            <ul class="achievements">{''.join([f'<li>{a}</li>' for a in exp.get('achievements', [])])}</ul>
         </div>
         ''' for exp in structured.get('work_experience', [])])}
     </div>
+
     <div class="section">
         <h2>Education</h2>
         {''.join([f'''
@@ -341,6 +454,13 @@ Return ONLY valid JSON with this exact structure:
             <strong>{edu.get('degree', '')}</strong> - {edu.get('institution', '')} ({edu.get('year', '')})
         </div>
         ''' for edu in structured.get('education', [])])}
+    </div>
+
+    <div class="section">
+        <h2>Optimization Insights</h2>
+        <p><strong>Missing Keywords to add:</strong> {', '.join(structured.get('missing_keywords', []))}</p>
+        <p><strong>Tips:</strong></p>
+        <ul>{''.join([f'<li>{s}</li>' for s in structured.get('optimization_suggestions', [])])}</ul>
     </div>
 </body>
 </html>
@@ -445,3 +565,141 @@ async def get_resume_events(
         }
         for e in events
     ]
+
+
+@router.post("/resume/cover-letter")
+async def generate_cover_letter(
+    resume_id: str = Form(...),
+    job_description: str = Form(...),
+    company_name: str = Form(""),
+    hiring_manager: str = Form(""),
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user)
+):
+    """Generate a cover letter based on resume and job description"""
+    
+    openrouter_key = os.getenv("OPENROUTER_API_KEY")
+    if not openrouter_key:
+        raise HTTPException(
+            status_code=503,
+            detail="LLM service not configured. Please add OPENROUTER_API_KEY to environment."
+        )
+    
+    try:
+        resume_uuid = uuid.UUID(resume_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid resume_id")
+    
+    resume = db.query(Resume).filter(Resume.id == resume_uuid).first()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    
+    try:
+        import httpx
+        
+        prompt = f"""You are an expert cover letter writer. Write a compelling, professional cover letter.
+
+Resume:
+{resume.extracted_text}
+
+Job Description:
+{job_description}
+
+{"Hiring Manager: " + hiring_manager if hiring_manager else ""}
+{"Company: " + company_name if company_name else ""}
+
+Write a cover letter that:
+1. Addresses the hiring manager professionally (use "Dear Hiring Manager" if name unknown)
+2. Highlights relevant experience and skills from the resume
+3. Shows enthusiasm for the role and company
+4. Is concise (3-4 paragraphs max)
+5. Uses professional language
+6. Includes a call to action
+
+Return ONLY the cover letter text, no formatting or markdown.
+"""
+        
+        async with httpx.AsyncClient() as client:
+            response = await client.post(
+                "https://openrouter.ai/api/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {openrouter_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": "qwen/qwen-2.5-7b-instruct",
+                    "messages": [
+                        {"role": "system", "content": "You are an expert cover letter writer. Write professional, compelling cover letters."},
+                        {"role": "user", "content": prompt}
+                    ],
+                    "max_tokens": 1500
+                },
+                timeout=60.0
+            )
+        
+        result = response.json()
+        cover_letter = result["choices"][0]["message"]["content"]
+        
+        from weasyprint import HTML
+        html_content = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {{ font-family: Arial, sans-serif; margin: 40px; line-height: 1.6; }}
+        .date {{ margin-bottom: 20px; color: #666; }}
+        .salutation {{ margin-bottom: 20px; }}
+        .body {{ margin-bottom: 20px; }}
+        .closing {{ margin-top: 30px; }}
+        .signature {{ margin-top: 40px; }}
+    </style>
+</head>
+<body>
+    <div class="date">{company_name or "Dear Hiring Manager"}</div>
+    <div class="salutation">Dear {hiring_manager or "Hiring Manager"},</div>
+    <div class="body">
+        {cover_letter.replace('\n\n', '</div><div class="body">')}
+    </div>
+    <div class="closing">Sincerely,</div>
+    <div class="signature">{current_user}</div>
+</body>
+</html>
+"""
+        
+        pdf_filename = f"cover_letter_{uuid.uuid4()}.pdf"
+        pdf_path = UPLOAD_DIR / pdf_filename
+        pdf_bytes = HTML(string=html_content).write_pdf()
+        
+        with open(pdf_path, 'wb') as f:
+            f.write(pdf_bytes)
+        
+        return {
+            "status": "completed",
+            "cover_letter_text": cover_letter,
+            "pdf_path": f"/api/resume/cover-letter/{pdf_filename}/download"
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Cover letter generation failed: {str(e)}")
+
+
+@router.get("/resume/cover-letter/{filename}/download")
+async def download_cover_letter(
+    filename: str,
+    current_user: str = Depends(get_current_user)
+):
+    """Download generated cover letter PDF"""
+    
+    if not filename.endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Invalid file")
+    
+    pdf_path = UPLOAD_DIR / filename
+    
+    if not os.path.exists(pdf_path):
+        raise HTTPException(status_code=404, detail="Cover letter not found")
+    
+    return FileResponse(
+        pdf_path,
+        media_type="application/pdf",
+        filename=f"cover_letter_{filename}"
+    )

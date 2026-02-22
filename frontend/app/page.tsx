@@ -10,9 +10,10 @@ import { GlobalWire, PulsingIndicator } from "@/components/global-wire";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
 import { ShinyButton } from "@/components/ui/shiny-button";
+import { ApplyMateFlow } from "@/components/applymate-flow";
 import { 
   Sparkles, FileText, Rocket, TrendingUp, 
-  ArrowRight, CheckCircle, Zap, Target
+  ArrowRight, CheckCircle, Zap, Target, X
 } from "lucide-react";
 
 const features = [
@@ -110,7 +111,7 @@ function FeaturesSection({ containerRef }: { containerRef: React.RefObject<HTMLE
   const progress = useTransform(scrollYProgress, [0, 1], [0, 1]);
 
   return (
-    <section className="py-32 px-6 relative" ref={containerRef}>
+    <section id="features" className="py-32 px-6 relative" ref={containerRef}>
       <div className="max-w-6xl mx-auto">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
@@ -188,7 +189,7 @@ function HowItWorksSection() {
   );
 }
 
-function CTASection() {
+function CTASection({ onStartFlow }: { onStartFlow: () => void }) {
   return (
     <section className="py-32 px-6 relative">
       {/* Section Divider */}
@@ -207,7 +208,7 @@ function CTASection() {
             Join thousands of job seekers who land interviews faster.
           </p>
           <div className="flex flex-wrap justify-center gap-4">
-            <ShinyButton variant="yellow">
+            <ShinyButton variant="yellow" onClick={onStartFlow}>
               Get Started <ArrowRight className="ml-2 w-5 h-5" />
             </ShinyButton>
             <Button 
@@ -246,6 +247,7 @@ export default function Home() {
   const { isLoaded, user } = useUser();
   const router = useRouter();
   const containerRef = useRef<HTMLElement>(null);
+  const [showFlow, setShowFlow] = useState(false);
 
   // Don't auto-redirect - show landing page first
   // User can navigate to dashboard manually or via navbar
@@ -267,7 +269,7 @@ export default function Home() {
       <GlobalWire containerRef={containerRef} />
       
       {/* Kinetic Hero */}
-      <KineticHero />
+      <KineticHero onStartFlow={() => setShowFlow(true)} />
       
       {/* Features */}
       <FeaturesSection containerRef={containerRef} />
@@ -276,10 +278,45 @@ export default function Home() {
       <HowItWorksSection />
       
       {/* CTA */}
-      <CTASection />
+      <CTASection onStartFlow={() => setShowFlow(true)} />
       
       {/* Footer */}
       <Footer />
+
+      {/* Interactive Flow Modal */}
+      {showFlow && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4"
+        >
+          <motion.div
+            initial={{ scale: 0.95, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            exit={{ scale: 0.95, opacity: 0 }}
+            className="w-full max-w-4xl max-h-[90vh] overflow-y-auto bg-[#0A0A0A] rounded-3xl border border-white/10"
+          >
+            <div className="sticky top-0 z-10 flex items-center justify-between p-4 border-b border-white/10 bg-[#0A0A0A]">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-[#FACC15] flex items-center justify-center">
+                  <span className="text-sm font-bold text-black">A</span>
+                </div>
+                <span className="text-[#E4E2DD] font-medium">ApplyMate Flow</span>
+              </div>
+              <button
+                onClick={() => setShowFlow(false)}
+                className="p-2 rounded-lg hover:bg-white/10 transition-colors"
+              >
+                <X className="w-5 h-5 text-[#6B6B6B]" />
+              </button>
+            </div>
+            <div className="p-6">
+              <ApplyMateFlow />
+            </div>
+          </motion.div>
+        </motion.div>
+      )}
     </div>
   );
 }
