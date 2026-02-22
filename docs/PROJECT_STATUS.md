@@ -50,11 +50,40 @@ AI-powered job application automation platform that streamlines your job search 
 - `GET /api/resume/{id}/download` - Download PDF
 - `DELETE /api/resumes/{id}` - Delete resume
 - `GET /api/resumes` - List all resumes
+- `GET /api/health` - Health check
 
-### 7. DevOps
-- `start.sh` - Start all services (Docker + Backend + Frontend)
-- `stop.sh` - Stop all services
-- OpenRouter API key configured in `.env`
+### 7. Deployment Infrastructure
+- **Vercel** frontend deployment configured
+- **Railway** backend deployment configured
+- **Docker** setup for local development
+- **Scripts** - start.sh and stop.sh for easy local development
+
+---
+
+## Today's Work (Feb 23, 2026) - Deployment Journey
+
+### Problems Solved:
+1. ✅ **Initial deployment issues** - Fixed Railway config (rootDirectory, startCommand)
+2. ✅ **Python syntax error** - Fixed f-string backslash issue in cover letter generation
+3. ✅ **Database connection** - Fixed postgres:// to postgresql:// conversion
+4. ✅ **Railway variable reference** - Added proper error handling for DATABASE_URL
+5. ✅ **CORS issues** - Added FRONTEND_URL to backend CORS settings
+6. ✅ **Production deployment** - Successfully deployed to Vercel + Railway
+
+### Key Commits:
+```
+e322613 docs: Add comprehensive deployment guide
+7825f0e fix: Add proper error handling for missing DATABASE_URL
+8da39a4 fix: Handle postgres:// to postgresql:// conversion for Railway
+143af90 fix: Resolve Python f-string backslash syntax error
+3b89eda feat: Add resume optimization flow with ATS scoring and cover letter generation
+```
+
+### Issues Fixed During Deployment:
+- ModuleNotFoundError: No module named 'app' → Added Root Directory config
+- SyntaxError: f-string backslash → Fixed string formatting
+- OperationalError: localhost connection → Added DATABASE_URL
+- ArgumentError: Could not parse URL → Added proper error handling
 
 ---
 
@@ -63,21 +92,24 @@ AI-powered job application automation platform that streamlines your job search 
 | Component | Technology |
 |-----------|------------|
 | Frontend | Next.js 15, React 18, Tailwind CSS, Framer Motion |
-| Backend | FastAPI (Python) |
-| Database | PostgreSQL (Docker) |
-| Task Queue | Redis (Docker) |
+| Backend | FastAPI (Python), SQLAlchemy |
+| Database | PostgreSQL (Railway) |
+| Task Queue | Redis (Railway) |
 | Auth | Clerk |
 | AI/LLM | OpenRouter (Qwen 2.5) |
 | PDF Gen | WeasyPrint |
+| Deployment | Vercel (Frontend), Railway (Backend) |
 
 ---
 
 ## Where We're Heading (Next Steps)
 
 ### Phase 1: Polish & Fixes
-- [ ] Fix any remaining UI bugs
+- [ ] Test full flow end-to-end
 - [ ] Add loading states to all async operations
 - [ ] Error handling improvements
+- [ ] **Add Sentry monitoring** - Backend + Frontend error tracking
+- [ ] Add UptimeRobot for health checks
 
 ### Phase 2: Enhanced Features
 - [ ] **Job URL Scraping** - Automatically extract job description from URL
@@ -86,9 +118,10 @@ AI-powered job application automation platform that streamlines your job search 
 - [ ] **Auto-Apply** - Browser automation for one-click applications
 
 ### Phase 3: Production
-- [ ] Move from local Docker to cloud (Supabase + Railway/Render)
+- [x] Deploy to Vercel ✅
+- [x] Deploy to Railway ✅
+- [ ] Custom domain
 - [ ] Add Stripe payments
-- [ ] Production domain & SSL
 - [ ] Email notifications
 
 ### Phase 4: Advanced AI
@@ -96,6 +129,17 @@ AI-powered job application automation platform that streamlines your job search 
 - [ ] Resume comparison tool
 - [ ] Interview preparation based on job
 - [ ] Salary negotiation insights
+
+---
+
+## Production URLs
+
+| Service | URL |
+|---------|-----|
+| **Frontend (Vercel)** | https://autoapply-ai-git-main-hasnainzxcs-projects.vercel.app |
+| **Backend (Railway)** | https://autoapplyai-production.up.railway.app |
+| **Frontend (Local)** | http://localhost:3000 |
+| **Backend (Local)** | http://localhost:8000 |
 
 ---
 
@@ -115,12 +159,13 @@ cd backend && PYTHONPATH=/home/hairzee/prods/applymate/backend python -m uvicorn
 cd frontend && npm run dev
 ```
 
-### Production URLs
-- **Frontend (Vercel):** https://autoapply-ai-git-main-hasnainzxcs-projects.vercel.app/
-- **Frontend (Local):** http://localhost:3000
-- **Backend (Render):** [Deploy pending - set NEXT_PUBLIC_API_URL]
-
-> **Note:** When backend is deployed to Render, set `NEXT_PUBLIC_API_URL` in Vercel to your Render backend URL (e.g., `https://applymate-backend.onrender.com`)
+### After Code Changes
+```bash
+git add .
+git commit -m "Your changes"
+git push origin main
+```
+Both Vercel and Railway will auto-deploy!
 
 ---
 
@@ -148,35 +193,72 @@ applymate/
 │   └── uploads/           # Uploaded files
 │
 ├── docs/                   # Documentation
+│   ├── PROJECT_STATUS.md
+│   └── DEPLOYMENT_GUIDE.md
 ├── start.sh               # Start script
 └── stop.sh               # Stop script
 ```
 
 ---
 
-## Recent Commits
+## Environment Variables
 
-- `f5913ca` - revert: undo performance changes - keeping Framer Motion animations
-- `62f3c7c` - perf(ui): replace Framer Motion with CSS-only animations for mobile
-- `4293822` - fix(ui): modernize hamburger menu with animated icon
-- `0904a8e` - feat(ui): add mobile responsiveness
+### Frontend (Vercel)
+| Variable | Value |
+|----------|-------|
+| NEXT_PUBLIC_API_URL | https://autoapplyai-production.up.railway.app |
+| NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY | pk_test_xxx |
+
+### Backend (Railway)
+| Variable | Value |
+|----------|-------|
+| DATABASE_URL | postgresql://postgres:xxx@metro.proxy.rlwy.net:41671/railway |
+| OPENROUTER_API_KEY | sk-or-v1-xxx |
+| FRONTEND_URL | https://autoapply-ai-git-main-hasnainzxcs-projects.vercel.app |
+
+---
+
+## Monitoring Logs
+
+### Railway (Backend)
+- Go to backend service → **Logs** tab
+- Shows all requests, errors, startup logs
+
+### Vercel (Frontend)
+- Go to project → **Deployments** → Click deployment
+- Shows frontend errors
 
 ---
 
 ## Known Issues
 
-- Backend LSP errors (type hints) -不影响功能
+- Backend LSP type hints (non-blocking)
 - Viewport metadata warnings in Next.js 15
 
 ---
 
-## API Keys Needed
+## Recent Commits (Last 10)
 
-| Key | Status | Where to Get |
-|-----|--------|--------------|
-| OPENROUTER_API_KEY | ✅ Configured | openrouter.ai |
-| CLERK_SECRET_KEY | Optional | Clerk dashboard |
-| DATABASE_URL | ✅ Local Docker | - |
+```
+e322613 docs: Add comprehensive deployment guide
+7825f0e fix: Add proper error handling for missing DATABASE_URL
+8da39a4 fix: Handle postgres:// to postgresql:// conversion for Railway
+c5f00aa Merge branch 'main' (workflows)
+143af90 fix: Resolve Python f-string backslash syntax error
+3b89eda feat: Add resume optimization flow with ATS scoring and cover letter generation
+f5913ca revert: undo performance changes - keeping Framer Motion animations
+```
+
+---
+
+## API Keys Status
+
+| Key | Status | Location |
+|-----|--------|----------|
+| OPENROUTER_API_KEY | ✅ Configured | Railway + .env |
+| DATABASE_URL | ✅ Configured | Railway |
+| FRONTEND_URL | ✅ Configured | Railway |
+| CLERK_SECRET_KEY | Optional | Not configured |
 
 ---
 
