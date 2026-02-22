@@ -6,11 +6,12 @@ import { AgentWorkflowAnimation } from "./agent-workflow";
 
 interface KineticHeroProps {
   onJobUrlSubmit?: (url: string) => void;
+  onStartFlow?: () => void;
 }
 
 const words = ["Apply", "Smarter", "Faster"];
 
-export function KineticHero({ onJobUrlSubmit }: KineticHeroProps) {
+export function KineticHero({ onJobUrlSubmit, onStartFlow }: KineticHeroProps) {
   const [mounted, setMounted] = useState(false);
   const [jobUrl, setJobUrl] = useState("");
   const [isFocused, setIsFocused] = useState(false);
@@ -97,11 +98,46 @@ export function KineticHero({ onJobUrlSubmit }: KineticHeroProps) {
               initial={shouldAnimate ? { opacity: 0, y: 20 } : false}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: shouldAnimate ? 0.4 : 0 }}
-              className="text-base sm:text-lg md:text-xl text-[#6B6B6B] max-w-xl sm:max-w-2xl mb-8 sm:mb-10 lg:mb-12 font-light"
+              className="text-base sm:text-lg md:text-xl text-[#6B6B6B] max-w-xl sm:max-w-2xl mb-6 sm:mb-8 font-light"
             >
               Drop a job URL. We&apos;ll tailor your resume, write the cover letter, 
               and apply — while you watch.
             </motion.p>
+
+            {/* CTA Buttons */}
+            <motion.div
+              initial={shouldAnimate ? { opacity: 0, y: 20 } : false}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.5, delay: shouldAnimate ? 0.5 : 0 }}
+              className="flex flex-wrap gap-3 sm:gap-4 mb-8 sm:mb-10"
+            >
+              <motion.button
+                onClick={onStartFlow}
+                whileHover={hoverScale}
+                whileTap={tapScale}
+                className="group relative px-6 sm:px-8 py-3 sm:py-4 bg-[#FACC15] text-[#080808] font-semibold text-sm sm:text-base rounded-xl overflow-hidden"
+              >
+                <span className="relative z-10 flex items-center gap-2">
+                  Get Started Free
+                  <svg className="w-4 h-4 sm:w-5 sm:h-5 group-hover:translate-x-1 transition-transform" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                  </svg>
+                </span>
+                <div className="absolute inset-0 bg-gradient-to-r from-[#FACC15] via-[#FDE047] to-[#FACC15] opacity-0 group-hover:opacity-100 transition-opacity" />
+                <div className="absolute inset-0 bg-[#EAB308] opacity-0 group-hover:opacity-100 transition-opacity" />
+              </motion.button>
+              
+              <motion.button
+                onClick={() => {
+                  document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' });
+                }}
+                whileHover={hoverScale}
+                whileTap={tapScale}
+                className="px-6 sm:px-8 py-3 sm:py-4 border border-white/20 text-[#E4E2DD] font-medium text-sm sm:text-base rounded-xl hover:bg-white/5 transition-colors"
+              >
+                See How It Works
+              </motion.button>
+            </motion.div>
 
             {/* Input Box */}
             <motion.div

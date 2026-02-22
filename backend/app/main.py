@@ -4,6 +4,9 @@ from app.api.routes import auth, users, jobs, applications, credits
 from app.api.routes import resumes
 from app.services.database import init_db
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 def create_app() -> FastAPI:
