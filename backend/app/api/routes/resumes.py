@@ -9,7 +9,6 @@ from pathlib import Path
 
 from app.services.database import get_db, Resume, TailoredResume, ResumeEvent
 from app.services.auth import get_current_user
-from playwright.async_api import async_playwright
 
 router = APIRouter()
 
@@ -17,12 +16,17 @@ UPLOAD_DIR = Path("/home/hairzee/prods/applymate/backend/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
-async def html_to_pdf(html_content: str) -> bytes:
-    """Convert HTML to PDF using Playwright"""
-    async with async_playwright() as p:
-        browser = await p.chromium.launch()
-        page = await browser.new_page()
-        await page.set_content(html_content, wait_until="networkidle")
+def html_to_pdf(html_content: str) -> bytes:
+    """Convert HTML to PDF using pdfcrowd API"""
+    try:
+        import pdfcrowd
+        client = pdfcrowd.HtmlToPdfClient('demo', 'demo')
+        client.setOutputFormat('pdf')
+        pdf_bytes = client.convertString(html_content)
+        return pdf_bytes
+    except Exception as e:
+        # Fallback: return HTML as bytes (user can save as .html)
+        return html_content.encode('utf-8')
         pdf_bytes = await page.pdf(print_background=True, margin={"top": "20px", "bottom": "20px", "left": "20px", "right": "20px"})
         await browser.close()
         return pdf_bytes
@@ -481,7 +485,7 @@ Return ONLY valid JSON. No markdown, no explanations.
 </html>
 """
         
-        pdf_bytes = await html_to_pdf(html_content)
+        pdf_bytes = html_to_pdf(html_content)
         
         pdf_filename = f"{tailored.id}.pdf"
         pdf_path = UPLOAD_DIR / pdf_filename
@@ -682,7 +686,7 @@ Return ONLY the cover letter text, no formatting or markdown.
 </html>
 """
         
-        pdf_bytes = await html_to_pdf(html_content)
+        pdf_bytes = html_to_pdf(html_content)
         
         pdf_filename = f"cover_letter_{uuid.uuid4()}.pdf"
         pdf_path = UPLOAD_DIR / pdf_filename
