@@ -9,11 +9,23 @@ from pathlib import Path
 
 from app.services.database import get_db, Resume, TailoredResume, ResumeEvent
 from app.services.auth import get_current_user
+from playwright.async_api import async_playwright
 
 router = APIRouter()
 
 UPLOAD_DIR = Path("/home/hairzee/prods/applymate/backend/uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+
+
+async def html_to_pdf(html_content: str) -> bytes:
+    """Convert HTML to PDF using Playwright"""
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.set_content(html_content, wait_until="networkidle")
+        pdf_bytes = await page.pdf(print_background=True, margin={"top": "20px", "bottom": "20px", "left": "20px", "right": "20px"})
+        await browser.close()
+        return pdf_bytes
 
 
 @router.get("/resumes")
@@ -392,8 +404,11 @@ Return ONLY valid JSON. No markdown, no explanations.
             {"structured_keys": list(structured.keys())}
         )
         
-        from weasyprint import HTML
         html_content = f"""
+<!DOCTYPE html>
+<html>
+        
+        pdf_filename = f"{tailored.id}.pdf"
 <!DOCTYPE html>
 <html>
 <head>
@@ -466,7 +481,7 @@ Return ONLY valid JSON. No markdown, no explanations.
 </html>
 """
         
-        pdf_bytes = HTML(string=html_content).write_pdf()
+        pdf_bytes = await html_to_pdf(html_content)
         
         pdf_filename = f"{tailored.id}.pdf"
         pdf_path = UPLOAD_DIR / pdf_filename
@@ -642,7 +657,6 @@ Return ONLY the cover letter text, no formatting or markdown.
         
         formatted_cover_letter = cover_letter.replace('\n\n', '</div><div class="body">')
         
-        from weasyprint import HTML
         html_content = f"""
 <!DOCTYPE html>
 <html>
@@ -668,9 +682,10 @@ Return ONLY the cover letter text, no formatting or markdown.
 </html>
 """
         
+        pdf_bytes = await html_to_pdf(html_content)
+        
         pdf_filename = f"cover_letter_{uuid.uuid4()}.pdf"
         pdf_path = UPLOAD_DIR / pdf_filename
-        pdf_bytes = HTML(string=html_content).write_pdf()
         
         with open(pdf_path, 'wb') as f:
             f.write(pdf_bytes)

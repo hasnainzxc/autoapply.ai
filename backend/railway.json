@@ -1,3 +1,7 @@
 {
-  "$schema": "https://railway.app/railway.schema.json"
+  "$schema": "https://railway.app/railway.schema.json",
+  "build": {
+    "builder": "NIXPACKS_PYTHON_BUILDER",
+    "installCommand": "pip install -r requirements.txt && playwright install --with-deps chromium"
+  }
 }
