@@ -25,11 +25,7 @@ def html_to_pdf(html_content: str) -> bytes:
         pdf_bytes = client.convertString(html_content)
         return pdf_bytes
     except Exception as e:
-        # Fallback: return HTML as bytes (user can save as .html)
         return html_content.encode('utf-8')
-        pdf_bytes = await page.pdf(print_background=True, margin={"top": "20px", "bottom": "20px", "left": "20px", "right": "20px"})
-        await browser.close()
-        return pdf_bytes
 
 
 @router.get("/resumes")
