@@ -21,6 +21,7 @@ def html_to_pdf(html_content: str) -> bytes:
     try:
         from fpdf import FPDF
         from bs4 import BeautifulSoup
+        import re
         
         pdf = FPDF()
         pdf.add_page()
@@ -32,6 +33,11 @@ def html_to_pdf(html_content: str) -> bytes:
             text = tag.get_text(strip=True)
             if not text:
                 continue
+            
+            text = text.replace('\u2018', "'").replace('\u2019', "'")
+            text = text.replace('\u201c', '"').replace('\u201d', '"')
+            text = text.replace('\u2013', '-').replace('\u2014', '-')
+            text = re.sub(r'[^\x00-\x7F]+', '', text)
             
             if tag.name == 'h1':
                 pdf.set_font('Helvetica', 'B', 18)
@@ -50,7 +56,7 @@ def html_to_pdf(html_content: str) -> bytes:
                     pdf.multi_cell(0, 5, line)
             pdf.ln(2)
         
-        return pdf.output(dest='S').encode('latin-1')
+        return pdf.output()
     except Exception as e:
         raise Exception(f"PDF generation failed: {str(e)}")
 
