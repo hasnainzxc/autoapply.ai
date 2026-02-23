@@ -17,15 +17,40 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def html_to_pdf(html_content: str) -> bytes:
-    """Convert HTML to PDF using xhtml2pdf"""
+    """Convert HTML to PDF using fpdf2"""
     try:
-        from xhtml2pdf import pisa
-        from io import BytesIO
-        result = BytesIO()
-        pisa_status = pisa.CreatePDF(html_content, dest=result)
-        if pisa_status.err:
-            raise Exception("PDF conversion failed")
-        return result.getvalue()
+        from fpdf import FPDF
+        from bs4 import BeautifulSoup
+        
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_auto_page_break(auto=True, margin=15)
+        
+        soup = BeautifulSoup(html_content, 'html.parser')
+        
+        for tag in soup.find_all(['h1', 'h2', 'h3', 'p', 'li', 'div', 'span']):
+            text = tag.get_text(strip=True)
+            if not text:
+                continue
+            
+            if tag.name == 'h1':
+                pdf.set_font('Helvetica', 'B', 18)
+                pdf.ln(8)
+            elif tag.name == 'h2':
+                pdf.set_font('Helvetica', 'B', 14)
+                pdf.ln(6)
+            elif tag.name == 'h3':
+                pdf.set_font('Helvetica', 'B', 12)
+                pdf.ln(5)
+            else:
+                pdf.set_font('Helvetica', '', 10)
+            
+            for line in text.split('\n'):
+                if line.strip():
+                    pdf.multi_cell(0, 5, line)
+            pdf.ln(2)
+        
+        return pdf.output(dest='S').encode('latin-1')
     except Exception as e:
         raise Exception(f"PDF generation failed: {str(e)}")
 
