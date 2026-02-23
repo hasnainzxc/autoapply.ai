@@ -17,15 +17,17 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 
 def html_to_pdf(html_content: str) -> bytes:
-    """Convert HTML to PDF using pdfcrowd API"""
+    """Convert HTML to PDF using xhtml2pdf"""
     try:
-        import pdfcrowd
-        client = pdfcrowd.HtmlToPdfClient('demo', 'demo')
-        client.setOutputFormat('pdf')
-        pdf_bytes = client.convertString(html_content)
-        return pdf_bytes
+        from xhtml2pdf import pisa
+        from io import BytesIO
+        result = BytesIO()
+        pisa_status = pisa.CreatePDF(html_content, dest=result)
+        if pisa_status.err:
+            raise Exception("PDF conversion failed")
+        return result.getvalue()
     except Exception as e:
-        return html_content.encode('utf-8')
+        raise Exception(f"PDF generation failed: {str(e)}")
 
 
 @router.get("/resumes")
