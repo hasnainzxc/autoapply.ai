@@ -1,0 +1,8 @@
+[nixpacks]
+python_version = "311"
+
+install = [
+    "pip install -r requirements.txt",
+    "playwright install chromium",
+    "playwright install-deps chromium"
+]
