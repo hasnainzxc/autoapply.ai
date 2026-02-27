@@ -6,10 +6,6 @@ on:
   pull_request:
     branches: [main]
 
-env:
-  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
-  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
-
 jobs:
   # =======================
   # LINT & TYPE CHECK
@@ -144,7 +140,7 @@ jobs:
         run: npm install -g vercel@latest
 
       - name: Build & Deploy to Vercel Preview
-        run: vercel --yes --token=${{ secrets.VERCEL_TOKEN }} --environment=preview
+        run: vercel --yes --token=${{ secrets.VERCEL_TOKEN }} --environment=preview --org=${{ secrets.VERCEL_ORG_ID }} --project=${{ secrets.VERCEL_PROJECT_ID }}
         working-directory: ./frontend
         env:
           NEXT_PUBLIC_API_URL: ${{ secrets.PREVIEW_API_URL }}
@@ -167,7 +163,7 @@ jobs:
         run: npm install -g vercel@latest
 
       - name: Build & Deploy to Vercel Production
-        run: vercel --yes --token=${{ secrets.VERCEL_TOKEN }} --prod
+        run: vercel --yes --token=${{ secrets.VERCEL_TOKEN }} --prod --org=${{ secrets.VERCEL_ORG_ID }} --project=${{ secrets.VERCEL_PROJECT_ID }}
         working-directory: ./frontend
         env:
           NEXT_PUBLIC_API_URL: ${{ secrets.PRODUCTION_API_URL }}
