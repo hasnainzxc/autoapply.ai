@@ -140,10 +140,14 @@ jobs:
         run: npm install -g vercel@latest
 
       - name: Build & Deploy to Vercel Preview
-        run: vercel --yes --token=${{ secrets.VERCEL_TOKEN }} --environment=preview --org=${{ secrets.VERCEL_ORG_ID }} --project=${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          vercel link --yes --token=${{ secrets.VERCEL_TOKEN }}
+          vercel --yes --token=${{ secrets.VERCEL_TOKEN }} --environment=preview
         working-directory: ./frontend
         env:
           NEXT_PUBLIC_API_URL: ${{ secrets.PREVIEW_API_URL }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
   # =======================
   # VERCEL PRODUCTION DEPLOYMENT (Main Branch)
@@ -163,10 +167,14 @@ jobs:
         run: npm install -g vercel@latest
 
       - name: Build & Deploy to Vercel Production
-        run: vercel --yes --token=${{ secrets.VERCEL_TOKEN }} --prod --org=${{ secrets.VERCEL_ORG_ID }} --project=${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          vercel link --yes --token=${{ secrets.VERCEL_TOKEN }}
+          vercel --yes --token=${{ secrets.VERCEL_TOKEN }} --prod
         working-directory: ./frontend
         env:
           NEXT_PUBLIC_API_URL: ${{ secrets.PRODUCTION_API_URL }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
           vercel-args: '--prod'
