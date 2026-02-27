@@ -144,14 +144,10 @@ jobs:
         run: npm install -g vercel@latest
 
       - name: Pull Vercel Info
-        run: |
-          cd frontend
-          vercel link --yes --token=${{ secrets.VERCEL_TOKEN }}
+        run: vercel link --yes --token=${{ secrets.VERCEL_TOKEN }} --dir=frontend
 
       - name: Build & Deploy to Vercel Preview
-        run: |
-          cd frontend
-          vercel --yes --token=${{ secrets.VERCEL_TOKEN }} --environment=preview
+        run: vercel --yes --token=${{ secrets.VERCEL_TOKEN }} --environment=preview --dir=frontend
         env:
           NEXT_PUBLIC_API_URL: ${{ secrets.PREVIEW_API_URL }}
 
@@ -173,14 +169,10 @@ jobs:
         run: npm install -g vercel@latest
 
       - name: Pull Vercel Info
-        run: |
-          cd frontend
-          vercel link --yes --token=${{ secrets.VERCEL_TOKEN }}
+        run: vercel link --yes --token=${{ secrets.VERCEL_TOKEN }} --dir=frontend
 
       - name: Build & Deploy to Vercel Production
-        run: |
-          cd frontend
-          vercel --yes --token=${{ secrets.VERCEL_TOKEN }} --prod
+        run: vercel --yes --token=${{ secrets.VERCEL_TOKEN }} --prod --dir=frontend
         env:
           NEXT_PUBLIC_API_URL: ${{ secrets.PRODUCTION_API_URL }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
