@@ -1,0 +1,46 @@
+name: Deploy Backend (Railway)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  deploy-backend:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Railway CLI
+        run: |
+          curl -fsSL https://railway.app/install.sh | sh
+
+      - name: Railway Login
+        run: railway login --token ${{ secrets.RAILWAY_TOKEN }}
+
+      - name: Link Railway Project
+        run: railway link ${{ secrets.RAILWAY_PROJECT_ID }}
+
+      - name: Set Environment Variables
+        run: |
+          railway variables set DATABASE_URL=${{ secrets.DATABASE_URL }}
+          railway variables set OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
+          railway variables set FRONTEND_URL=${{ secrets.FRONTEND_URL }}
+
+      - name: Deploy to Railway
+        run: |
+          railway up --detach --environment production
+          
+      - name: Get Deployment URL
+        id: deployment
+        run: |
+          sleep 10
+          URL=$(railway domain 2>/dev/null || echo "deployment failed")
+          echo "url=$URL" >> $GITHUB_OUTPUT
+
+      - name: Post Deployment Status
+        if: always()
+        run: |
+          echo "Backend deployed to: ${{ steps.deployment.outputs.url }}"

@@ -1,47 +1,231 @@
-name: CI/CD
+name: CI/CD Pipeline
 
 on:
   push:
-    branches: [main]
+    branches: [main, 'feature/**', 'fix/**', 'refactor/**']
   pull_request:
     branches: [main]
 
-jobs:
-  test-backend:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      
-      - name: Install dependencies
-        run: |
-          cd backend
-          pip install -r requirements.txt
-      
-      - name: Run Python syntax check
-        run: python -m py_compile backend/app/**/*.py
+env:
+  VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+  VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
 
-  test-frontend:
+jobs:
+  # =======================
+  # LINT & TYPE CHECK
+  # =======================
+  lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '20'
           cache: 'npm'
-      
-      - name: Install dependencies
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        run: cd frontend && npm ci
+
+      - name: Run ESLint
+        run: cd frontend && npm run lint
+
+      - name: Check TypeScript
+        run: cd frontend && npx tsc --noEmit
+
+  backend-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Python deps
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Python syntax check
+        run: python -m py_compile backend/app/**/*.py
+
+  # =======================
+  # FRONTEND BUILD
+  # =======================
+  build-frontend:
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install frontend deps
+        run: cd frontend && npm ci
+
+      - name: Build Next.js
+        run: cd frontend && npm run build
+        env:
+          NEXT_PUBLIC_API_URL: ${{ secrets.PREVIEW_API_URL || secrets.PRODUCTION_API_URL }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nextjs-build
+          path: frontend/.next
+          retention-days: 1
+
+  # =======================
+  # BACKEND BUILD (Python)
+  # =======================
+  build-backend:
+    runs-on: ubuntu-latest
+    needs: backend-lint
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Cache Python deps
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('backend/requirements.txt') }}
+          restore-keys: |
+            ${{ runner.os }}-pip-
+
+      - name: Install Python deps
+        run: |
+          cd backend
+          pip install -r requirements.txt
+
+      - name: Verify Python imports
+        run: python -c "from app.main import app; print('Backend OK')"
+
+  # =======================
+  # VERCEL PREVIEW DEPLOYMENT (Feature Branches)
+  # =======================
+  deploy-preview:
+    runs-on: ubuntu-latest
+    needs: [build-frontend, build-backend]
+    if: github.event_name == 'push' && (startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref_name, 'feature/') || startsWith(github.ref, 'refs/heads/fix/') || startsWith(github.ref_name, 'fix/'))
+    environment:
+      name: preview
+      url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Pull Vercel Environment Info
+        run: vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build Project
         run: |
           cd frontend
-          npm ci
-      
-      - name: Build frontend
+          vercel build --token=${{ secrets.VERCEL_TOKEN }} --env NEXT_PUBLIC_API_URL=${{ secrets.PREVIEW_API_URL }}
+        working-directory: .
+
+      - name: Deploy to Preview
+        id: deploy
         run: |
           cd frontend
-          npm run build
+          URL=$(vercel deploy --prebuilt --token=${{ secrets.VERCEL_TOKEN }} | tail -1)
+          echo "url=$URL" >> $GITHUB_OUTPUT
+        working-directory: .
+
+      - name: Comment PR with Preview URL
+        if: github.event_name == 'pull_request'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const url = '${{ steps.deploy.outputs.url }}';
+            const prNumber = context.issue.number;
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: prNumber,
+              body: `🚀 **Preview Deployment Ready!**\n\nView your changes at: ${url}\n\nThis preview will be available for testing.`
+            });
+
+  # =======================
+  # VERCEL PRODUCTION DEPLOYMENT (Main Branch)
+  # =======================
+  deploy-production:
+    runs-on: ubuntu-latest
+    needs: [build-frontend, build-backend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment:
+      name: production
+      url: https://autoapply-ai-git-main-hasnainzxcs-projects.vercel.app
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Pull Vercel Environment Info
+        run: vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build Project
+        run: |
+          cd frontend
+          vercel build --prod --token=${{ secrets.VERCEL_TOKEN }} --env NEXT_PUBLIC_API_URL=${{ secrets.PRODUCTION_API_URL }}
+        working-directory: .
+
+      - name: Deploy to Production
+        run: |
+          cd frontend
+          vercel deploy --prebuilt --prod --token=${{ secrets.VERCEL_TOKEN }}
+        working-directory: .
+
+  # =======================
+  # NOTIFICATION
+  # =======================
+  notify:
+    runs-on: ubuntu-latest
+    needs: [deploy-preview, deploy-production]
+    if: always()
+    steps:
+      - name: Create Deployment Status
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const status = '${{ needs.deploy-preview.result }}' === 'success' ? 'success' : 
+                          '${{ needs.deploy-production.result }}' === 'success' ? 'success' : 'failure';
+            const url = '${{ needs.deploy-preview.outputs.url }}' || 'Production';
+            
+            console.log(`Deployment ${status} - ${url}`);
