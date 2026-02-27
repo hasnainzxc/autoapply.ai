@@ -18,19 +18,25 @@ jobs:
           curl -fsSL https://railway.app/install.sh | sh
 
       - name: Railway Login
-        run: railway login --token ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          export RAILWAY_TOKEN=${{ secrets.RAILWAY_TOKEN }}
+          railway whoami
 
       - name: Link Railway Project
-        run: railway link ${{ secrets.RAILWAY_PROJECT_ID }}
+        run: |
+          export RAILWAY_TOKEN=${{ secrets.RAILWAY_TOKEN }}
+          railway link ${{ secrets.RAILWAY_PROJECT_ID }}
 
       - name: Set Environment Variables
         run: |
+          export RAILWAY_TOKEN=${{ secrets.RAILWAY_TOKEN }}
           railway variables set DATABASE_URL=${{ secrets.DATABASE_URL }}
           railway variables set OPENROUTER_API_KEY=${{ secrets.OPENROUTER_API_KEY }}
           railway variables set FRONTEND_URL=${{ secrets.FRONTEND_URL }}
 
       - name: Deploy to Railway
         run: |
+          export RAILWAY_TOKEN=${{ secrets.RAILWAY_TOKEN }}
           railway up --detach --environment production
           
       - name: Get Deployment URL
