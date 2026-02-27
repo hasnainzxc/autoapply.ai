@@ -140,13 +140,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Deploy to Vercel Preview
-        uses: vercel/vercel-action@v0
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
-          vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Pull Vercel Info
+        run: vercel link --yes --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build & Deploy to Vercel Preview
+        run: |
+          cd frontend
+          vercel --yes --token=${{ secrets.VERCEL_TOKEN }} --environment=preview
+        env:
+          NEXT_PUBLIC_API_URL: ${{ secrets.PREVIEW_API_URL }}
 
   # =======================
   # VERCEL PRODUCTION DEPLOYMENT (Main Branch)
@@ -162,11 +167,18 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Deploy to Vercel Production
-        uses: vercel/vercel-action@v0
-        with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
+      - name: Install Vercel CLI
+        run: npm install -g vercel@latest
+
+      - name: Pull Vercel Info
+        run: vercel link --yes --token=${{ secrets.VERCEL_TOKEN }}
+
+      - name: Build & Deploy to Vercel Production
+        run: |
+          cd frontend
+          vercel --yes --token=${{ secrets.VERCEL_TOKEN }} --prod
+        env:
+          NEXT_PUBLIC_API_URL: ${{ secrets.PRODUCTION_API_URL }}
           vercel-org-id: ${{ secrets.VERCEL_ORG_ID }}
           vercel-project-id: ${{ secrets.VERCEL_PROJECT_ID }}
           vercel-args: '--prod'
