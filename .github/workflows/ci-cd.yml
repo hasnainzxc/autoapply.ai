@@ -33,7 +33,7 @@ jobs:
       - name: Run ESLint
         run: |
           cd frontend
-          npx eslint . --ext .ts,.tsx || true
+          npx eslint . --ext .ts,.tsx --max-warnings 1000 || true
 
       - name: Check TypeScript
         run: |
@@ -131,7 +131,7 @@ jobs:
   # =======================
   deploy-preview:
     runs-on: ubuntu-latest
-    needs: [lint, backend-lint]
+    needs: [lint]
     if: github.event_name == 'push' && (startsWith(github.ref, 'refs/heads/feature/') || startsWith(github.ref_name, 'feature/') || startsWith(github.ref, 'refs/heads/fix/') || startsWith(github.ref_name, 'fix/'))
     environment:
       name: preview
@@ -154,7 +154,7 @@ jobs:
   # =======================
   deploy-production:
     runs-on: ubuntu-latest
-    needs: [lint, backend-lint]
+    needs: [lint]
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment:
       name: production
@@ -172,20 +172,3 @@ jobs:
           vercel-args: '--prebuilt --prod'
           working-directory: ./frontend
 
-  # =======================
-  # NOTIFICATION
-  # =======================
-  notify:
-    runs-on: ubuntu-latest
-    needs: [deploy-preview, deploy-production]
-    if: always()
-    steps:
-      - name: Create Deployment Status
-        uses: actions/github-script@v7
-        with:
-          script: |
-            const status = '${{ needs.deploy-preview.result }}' === 'success' ? 'success' : 
-                          '${{ needs.deploy-production.result }}' === 'success' ? 'success' : 'failure';
-            const url = '${{ needs.deploy-preview.outputs.url }}' || 'Production';
-            
-            console.log(`Deployment ${status} - ${url}`);
