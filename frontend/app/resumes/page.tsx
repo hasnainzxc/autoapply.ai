@@ -16,18 +16,20 @@ import {
   ChevronRight,
   Sparkles,
   X,
-  Loader2
+  Loader2,
+  Eye
 } from "lucide-react";
+import { ResumePreviewModal } from "@/components/resume-preview-modal";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 interface Resume {
   id: string;
+  name: string;
   original_file_path: string;
   extracted_text: string;
   created_at: string;
-  name?: string;
-  last_used?: string;
+  last_used_at?: string;
 }
 
 interface TailoredResume {
@@ -36,16 +38,6 @@ interface TailoredResume {
   status: string;
   pdf_path: string;
   created_at: string;
-}
-
-function extractResumeName(filename: string): string {
-  const nameWithoutExt = filename.replace(/\.(pdf|docx)$/i, '');
-  const parts = nameWithoutExt.split(/[-_]/);
-  if (parts.length >= 2) {
-    const capitalized = parts.map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase());
-    return capitalized.join(' ');
-  }
-  return nameWithoutExt.charAt(0).toUpperCase() + nameWithoutExt.slice(1);
 }
 
 function LastUsedIndicator({ resumeName }: { resumeName: string }) {
@@ -131,12 +123,14 @@ function ResumeCard({
   resume, 
   onSelect, 
   onDelete, 
+  onPreview,
   isSelected,
   isLastUsed 
 }: { 
   resume: Resume; 
   onSelect: (id: string) => void; 
   onDelete: (id: string) => void;
+  onPreview: (resume: Resume) => void;
   isSelected: boolean;
   isLastUsed: boolean;
 }) {
@@ -149,7 +143,7 @@ function ResumeCard({
     setIsDeleting(false);
   };
   
-  const resumeName = resume.name || extractResumeName(resume.original_file_path);
+  const resumeName = resume.name || "Untitled Resume";
   
   return (
     <motion.div
@@ -219,6 +213,14 @@ function ResumeCard({
               <Button 
                 variant="secondary" 
                 size="sm" 
+                className="rounded-full text-xs sm:text-sm opacity-0 group-hover:opacity-100 transition-opacity bg-white/10 text-white hover:bg-white/20"
+                onClick={(e) => { e.stopPropagation(); onPreview(resume); }}
+              >
+                <Eye className="w-4 h-4" />
+              </Button>
+              <Button 
+                variant="secondary" 
+                size="sm" 
                 className="rounded-full text-xs sm:text-sm bg-[#FACC15] text-black hover:bg-[#FACC15]/90"
                 onClick={(e) => { e.stopPropagation(); onSelect(resume.id); }}
               >
@@ -272,6 +274,7 @@ export default function ResumesPage() {
   const [lastUsedResume, setLastUsedResume] = useState<string | null>(null);
   const [jobDescription, setJobDescription] = useState("");
   const [tailoring, setTailoring] = useState(false);
+  const [previewResume, setPreviewResume] = useState<Resume | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -284,15 +287,14 @@ export default function ResumesPage() {
       const res = await fetch(`${API_URL}/api/resumes`);
       if (res.ok) {
         const data = await res.json();
-        const resumeList = (data.resumes || []).map((r: Resume) => ({
-          ...r,
-          name: extractResumeName(r.original_file_path)
-        }));
-        setResumes(resumeList);
+        setResumes(data.resumes || []);
         setTailoredResumes(data.tailored || []);
         
-        if (resumeList.length > 0 && !lastUsedResume) {
-          setLastUsedResume(resumeList[0].id);
+        const lastUsed = data.resumes?.find((r: Resume) => r.last_used_at);
+        if (lastUsed) {
+          setLastUsedResume(lastUsed.id);
+        } else if (data.resumes?.length > 0 && !lastUsedResume) {
+          setLastUsedResume(data.resumes[0].id);
         }
       }
     } catch (error) { console.error("Failed to fetch resumes", error); }
@@ -310,10 +312,11 @@ export default function ResumesPage() {
         const data = await res.json();
         const newResume: Resume = { 
           id: data.resume_id, 
+          name: data.name,
           original_file_path: file.name, 
           extracted_text: "", 
           created_at: new Date().toISOString(),
-          name: extractResumeName(file.name)
+          last_used_at: undefined
         };
         setResumes((prev) => [newResume, ...prev]);
         if (!lastUsedResume) setLastUsedResume(newResume.id);
@@ -336,9 +339,15 @@ export default function ResumesPage() {
     } catch (error) { console.error("Delete failed", error); }
   };
 
-  const handleSelectResume = (id: string) => {
+  const handleSelectResume = async (id: string) => {
     setSelectedResume(id);
     setLastUsedResume(id);
+    
+    try {
+      await fetch(`${API_URL}/api/resume/${id}/use`, { method: "POST" });
+    } catch (error) {
+      console.error("Failed to update last used", error);
+    }
   };
 
   const handleTailor = async () => {
@@ -360,8 +369,7 @@ export default function ResumesPage() {
 
   const downloadPDF = (url: string) => { window.open(`${API_URL}${url}`, "_blank"); };
 
-  const lastUsedResumeName = resumes.find(r => r.id === lastUsedResume)?.name || 
-    (resumes.find(r => r.id === lastUsedResume) ? extractResumeName(resumes.find(r => r.id === lastUsedResume)!.original_file_path) : null);
+  const lastUsedResumeName = resumes.find(r => r.id === lastUsedResume)?.name || "Select a resume";
 
   if (!isLoaded) {
     return (
@@ -507,6 +515,7 @@ export default function ResumesPage() {
                         resume={resume}
                         onSelect={handleSelectResume}
                         onDelete={handleDelete}
+                        onPreview={setPreviewResume}
                         isSelected={selectedResume === resume.id}
                         isLastUsed={lastUsedResume === resume.id}
                       />
@@ -556,6 +565,12 @@ export default function ResumesPage() {
           </div>
         </div>
       </div>
+
+      <ResumePreviewModal
+        resume={previewResume}
+        isOpen={!!previewResume}
+        onClose={() => setPreviewResume(null)}
+      />
     </div>
   );
 }

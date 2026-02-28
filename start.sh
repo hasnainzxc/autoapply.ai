@@ -8,6 +8,10 @@ echo "🚀 Starting ApplyMate..."
 echo "📦 Starting Docker containers..."
 docker start applymate-db applymate-redis
 
+# Load environment variables for local development
+echo "📝 Loading environment variables..."
+export $(cat /home/hairzee/prods/applymate/backend/.env | grep -v '^#' | xargs)
+
 # Start backend
 echo "🔧 Starting Backend..."
 cd /home/hairzee/prods/applymate/backend
