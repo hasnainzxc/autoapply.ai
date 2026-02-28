@@ -6,6 +6,7 @@ import os
 import uuid
 import json
 from pathlib import Path
+from datetime import datetime
 
 from app.services.database import get_db, Resume, TailoredResume, ResumeEvent
 from app.services.auth import get_current_user
@@ -74,10 +75,11 @@ async def list_resumes(
         "resumes": [
             {
                 "id": str(r.id),
+                "name": r.name,
                 "original_file_path": r.original_file_path,
                 "extracted_text": r.extracted_text,
                 "created_at": r.created_at.isoformat() if r.created_at else None,
-                "last_used": r.created_at.isoformat() if r.created_at else None
+                "last_used_at": r.last_used_at.isoformat() if r.last_used_at else None
             }
             for r in resumes
         ],
@@ -92,6 +94,36 @@ async def list_resumes(
             for t in tailored
         ]
     }
+
+
+@router.get("/resume/{resume_id}/view")
+async def view_resume(
+    resume_id: str,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user)
+):
+    """View original resume PDF"""
+    try:
+        resume_uuid = uuid.UUID(resume_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid resume ID")
+    
+    resume = db.query(Resume).filter(
+        Resume.id == resume_uuid,
+        Resume.user_id == current_user
+    ).first()
+    
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    
+    if not resume.original_file_path or not os.path.exists(resume.original_file_path):
+        raise HTTPException(status_code=404, detail="Resume file not found")
+    
+    return FileResponse(
+        resume.original_file_path,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"inline; filename=\"{resume.name or 'resume'}\""}
+    )
 
 
 @router.delete("/resumes/{resume_id}")
@@ -129,6 +161,36 @@ async def delete_resume(
     db.commit()
     
     return {"status": "deleted", "resume_id": resume_id}
+
+
+@router.post("/resume/{resume_id}/use")
+async def mark_resume_as_used(
+    resume_id: str,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user)
+):
+    """Mark a resume as last used"""
+    try:
+        resume_uuid = uuid.UUID(resume_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid resume ID")
+    
+    resume = db.query(Resume).filter(
+        Resume.id == resume_uuid,
+        Resume.user_id == current_user
+    ).first()
+    
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    
+    resume.last_used_at = datetime.utcnow()
+    db.commit()
+    
+    return {
+        "status": "updated",
+        "resume_id": resume_id,
+        "last_used_at": resume.last_used_at.isoformat()
+    }
 
 
 def log_resume_event(db: Session, tailored_resume_id: uuid.UUID, event_type: str, message: str, payload: dict = None):
@@ -173,6 +235,7 @@ def extract_text_from_file(file_path: Path, filename: str) -> str:
 @router.post("/resume/upload")
 async def upload_resume(
     file: UploadFile = File(...),
+    name: Optional[str] = Form(None),
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)
 ):
@@ -185,8 +248,14 @@ async def upload_resume(
     file_name = f"{uuid.uuid4()}.{file_ext}"
     file_path = UPLOAD_DIR / file_name
     
+    if not name:
+        base_name = file.filename.rsplit('.', 1)[0]
+        today = datetime.now().strftime('%Y-%m-%d')
+        name = f"{base_name}_{today}"
+    
     resume = Resume(
         user_id=current_user,
+        name=name,
         original_file_path=str(file_path)
     )
     db.add(resume)
@@ -224,6 +293,7 @@ async def upload_resume(
         return {
             "status": "completed",
             "resume_id": str(resume.id),
+            "name": resume.name,
             "filename": file.filename,
             "text_length": len(extracted_text)
         }

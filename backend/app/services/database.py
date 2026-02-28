@@ -99,8 +99,10 @@ class Resume(Base):
     
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id = Column(String(255))
+    name = Column(String(255))
     original_file_path = Column(Text)
     extracted_text = Column(Text)
+    last_used_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
