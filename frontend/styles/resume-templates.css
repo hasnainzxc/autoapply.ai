@@ -444,11 +444,30 @@
     max-width: none;
   }
 
-  /* Hide all UI chrome when printing */
+    /* Hide all UI chrome when printing */
   .resume-toolbar,
   .resume-template-selector,
   .resume-no-print {
     display: none !important;
+  }
+
+  /* Fix scrollable containers for print */
+  .resume-preview-container {
+    overflow: visible !important;
+    height: auto !important;
+    background: white !important;
+  }
+
+  .resume-print-area {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .resume-container {
+    max-width: none !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    padding: 0 !important;
   }
 }
 

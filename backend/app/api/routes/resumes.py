@@ -98,7 +98,8 @@ async def list_resumes(
                 "job_description": t.job_description[:50] + "..." if t.job_description and len(t.job_description or "") > 50 else t.job_description,
                 "status": t.status,
                 "pdf_path": t.pdf_path,
-                "created_at": t.created_at.isoformat() if t.created_at else None
+                "created_at": t.created_at.isoformat() if t.created_at else None,
+                "template_used": t.template_used
             }
             for t in tailored
         ]

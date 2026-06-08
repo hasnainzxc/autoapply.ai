@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Loader2, AlertCircle, RefreshCw } from "lucide-react";
+import { Loader2, AlertCircle, RefreshCw, FileText, FileDown } from "lucide-react";
 import { ResumeRenderer } from "@/components/resume-renderer";
 import { TemplateSelector, type Template } from "@/components/template-selector";
 import { apiGet } from "@/lib/api-client";
@@ -11,18 +11,20 @@ import type { TailoredResumeSchema } from "@/lib/resume-to-html";
 interface ResumePreviewProps {
   resumeData: TailoredResumeSchema;
   onUseResume?: () => void;
+  pdfUrl?: string;
 }
 
 interface TemplatesResponse {
   templates: Template[];
 }
 
-export function ResumePreview({ resumeData, onUseResume }: ResumePreviewProps) {
+export function ResumePreview({ resumeData, onUseResume, pdfUrl }: ResumePreviewProps) {
   const [selectedTemplate, setSelectedTemplate] = useState("modern");
   const [templates, setTemplates] = useState<Template[]>([]);
   const [templatesLoading, setTemplatesLoading] = useState(true);
   const [templatesError, setTemplatesError] = useState<string | null>(null);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [viewMode, setViewMode] = useState<"preview" | "pdf">("preview");
 
   // Use the template from the resume data if available
   useEffect(() => {
@@ -90,8 +92,40 @@ export function ResumePreview({ resumeData, onUseResume }: ResumePreviewProps) {
 
   return (
     <div className="flex flex-col h-full min-h-0 rounded-2xl overflow-hidden border border-white/10 bg-[#0A0A0A]">
-      {/* Template selector area */}
-      <div className="shrink-0 px-4 pt-4 pb-2 border-b border-white/5">
+      {/* View mode toggle + template selector */}
+      <div className="shrink-0 px-4 pt-4 pb-2 border-b border-white/5 space-y-2">
+        {/* View mode tabs */}
+        {pdfUrl && (
+          <div className="flex gap-1 p-0.5 bg-white/5 rounded-lg">
+            <button
+              onClick={() => setViewMode("preview")}
+              className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all ${
+                viewMode === "preview"
+                  ? "bg-[#FACC15] text-black"
+                  : "text-[#6B6B6B] hover:text-white"
+              }`}
+            >
+              <span className="flex items-center justify-center gap-1.5">
+                <FileText className="w-3.5 h-3.5" />
+                Preview
+              </span>
+            </button>
+            <button
+              onClick={() => setViewMode("pdf")}
+              className={`flex-1 py-1.5 px-3 rounded-md text-xs font-medium transition-all ${
+                viewMode === "pdf"
+                  ? "bg-[#FACC15] text-black"
+                  : "text-[#6B6B6B] hover:text-white"
+              }`}
+            >
+              <span className="flex items-center justify-center gap-1.5">
+                <FileDown className="w-3.5 h-3.5" />
+                PDF
+              </span>
+            </button>
+          </div>
+        )}
+
         <AnimatePresence mode="wait">
           {templatesLoading ? (
             <motion.div
@@ -128,25 +162,35 @@ export function ResumePreview({ resumeData, onUseResume }: ResumePreviewProps) {
               initial={{ opacity: 0, y: -10 }}
               animate={{ opacity: 1, y: 0 }}
             >
-              <TemplateSelector
-                templates={templates}
-                selectedTemplate={selectedTemplate}
-                onSelect={setSelectedTemplate}
-              />
+              {viewMode === "preview" && (
+                <TemplateSelector
+                  templates={templates}
+                  selectedTemplate={selectedTemplate}
+                  onSelect={setSelectedTemplate}
+                />
+              )}
             </motion.div>
           )}
         </AnimatePresence>
       </div>
 
-      {/* Renderer area — fills remaining height */}
+      {/* Content area — fills remaining height */}
       <div className="flex-1 min-h-0">
-        <ResumeRenderer
-          resumeData={resumeData}
-          template={selectedTemplate}
-          onTemplateChange={setSelectedTemplate}
-          onPrint={handlePrint}
-          onUseResume={onUseResume}
-        />
+        {viewMode === "pdf" && pdfUrl ? (
+          <iframe
+            src={pdfUrl}
+            className="w-full h-full border-0"
+            title="PDF Preview"
+          />
+        ) : (
+          <ResumeRenderer
+            resumeData={resumeData}
+            template={selectedTemplate}
+            onTemplateChange={setSelectedTemplate}
+            onPrint={handlePrint}
+            onUseResume={onUseResume}
+          />
+        )}
       </div>
 
       {/* Print indicator overlay */}

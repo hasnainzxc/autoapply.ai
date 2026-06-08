@@ -1,3 +1,11 @@
+import os
+from dotenv import load_dotenv
+
+# Load .env BEFORE any module imports (database.py checks DATABASE_URL at import time)
+_backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(os.path.join(_backend_dir, ".env"))
+load_dotenv()  # also try cwd (project root) — doesn't override
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import auth, users, jobs, applications, credits
@@ -5,10 +13,6 @@ from app.api.routes import resumes
 from app.api.routes import resume_v2
 from app.api.routes import resume_v3
 from app.services.database import init_db
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
 
 
 def create_app() -> FastAPI:

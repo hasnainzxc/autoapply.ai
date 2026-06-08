@@ -72,6 +72,7 @@ class LLMOrchestrator:
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
         self.base_url = "https://openrouter.ai/api/v1/chat/completions"
+        self._mock_profile: Optional[dict] = None
 
         if not self.api_key:
             raise ValueError("OPENROUTER_API_KEY is required")
@@ -136,7 +137,24 @@ class LLMOrchestrator:
         if profile.get("summary"):
             parts.append(f"\nSummary:\n{profile['summary']}")
         if profile.get("skills"):
-            parts.append(f"\nSkills:\n{', '.join(profile['skills'])}")
+            skills = profile["skills"]
+            if skills and isinstance(skills[0], dict):
+                # skills are objects with name + keywords
+                skill_lines = []
+                for s in skills:
+                    name = s.get("name", "")
+                    keywords = s.get("keywords", [])
+                    if keywords:
+                        skill_lines.append(f"{name}: {', '.join(keywords)}")
+                    elif name:
+                        skill_lines.append(name)
+                parts.append(f"\nSkills:\n" + "\n".join(skill_lines))
+            elif isinstance(skills, str):
+                # skills is a plain comma-separated string from ProfileData
+                parts.append(f"\nSkills:\n{skills}")
+            else:
+                # skills is a list of plain strings
+                parts.append(f"\nSkills:\n{', '.join(skills)}")
 
         return "\n".join(parts)
 
@@ -157,54 +175,180 @@ class LLMOrchestrator:
             return await self._call_gemini(messages, model_config, gemini_key, retry_count)
         return await self._call_openrouter(messages, model_config, retry_count)
 
+    @staticmethod
+    def _parse_profile_from_text(text: str) -> dict:
+        """Parse profile data from construct_profile_text output."""
+        info = {
+            "name": "", "email": "", "phone": "", "location": "",
+            "current_role": "", "summary": "", "skill_names": [],
+            "experience_years": 0,
+        }
+        lines = text.split("\n")
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            if line.lower().startswith("name:"):
+                info["name"] = line.split(":", 1)[1].strip()
+            elif line.lower().startswith("email:"):
+                info["email"] = line.split(":", 1)[1].strip()
+            elif line.lower().startswith("phone:"):
+                info["phone"] = line.split(":", 1)[1].strip()
+            elif line.lower().startswith("location:"):
+                info["location"] = line.split(":", 1)[1].strip()
+            elif line.lower().startswith("current role:"):
+                info["current_role"] = line.split(":", 1)[1].strip()
+            elif line.lower().startswith("years of experience:"):
+                val = line.split(":", 1)[1].strip()
+                try:
+                    info["experience_years"] = int(val)
+                except ValueError:
+                    pass
+            elif line.strip().lower() == "summary:":
+                i += 1
+                summary_parts = []
+                while i < len(lines) and lines[i].strip() and not lines[i].strip().lower().startswith(("skills", "experience", "work")):
+                    summary_parts.append(lines[i].strip())
+                    i += 1
+                info["summary"] = " ".join(summary_parts)
+                continue
+            elif line.strip().lower().startswith("skills"):
+                i += 1
+                while i < len(lines) and lines[i].strip() and not lines[i].strip().lower().startswith(("experience", "work", "education", "projects")):
+                    skill_line = lines[i].strip()
+                    # Parse "Python: FastAPI, React" or "Python, FastAPI, React"
+                    if ":" in skill_line:
+                        skills_part = skill_line.split(":", 1)[1]
+                    else:
+                        skills_part = skill_line
+                    for s in skills_part.split(","):
+                        s = s.strip()
+                        if s and s not in info["skill_names"]:
+                            info["skill_names"].append(s)
+                    i += 1
+                continue
+            i += 1
+        return info
+
     def _mock_response(self, messages: List[Dict[str, str]]) -> str:
-        """Generate mock JSON responses for development/testing"""
+        """Generate mock JSON responses for development/testing using actual input data."""
         sys_msg = next((m["content"] for m in messages if m["role"] == "system"), "")
         user_msg = next((m["content"] for m in messages if m["role"] == "user"), "")
         combined = (sys_msg + " " + user_msg).lower()
-        
+
+        # Extract JD keywords from system message
+        jd_keywords = []
+        for kw in ["Python", "FastAPI", "React", "TypeScript", "AWS", "Docker",
+                    "PostgreSQL", "REST", "API", "Kubernetes", "Terraform", "CI/CD",
+                    "Machine Learning", "NLP", "LangChain", "RAG", "Next.js",
+                    "Node.js", "GraphQL", "Redis", "Kafka", "Microservices"]:
+            if kw.lower() in combined:
+                jd_keywords.append(kw)
+
+        # Use stored profile data if available (most reliable), else parse from text
+        if self._mock_profile:
+            mp = self._mock_profile
+            name = mp.get("full_name", "")
+            email = mp.get("email", "")
+            phone = mp.get("phone", "")
+            summary = mp.get("summary", "")
+            current_role = mp.get("current_role", "")
+            location = mp.get("location", "")
+            exp_years = mp.get("experience_years", 0)
+            skills_str = mp.get("skills", "")
+            if isinstance(skills_str, str):
+                skill_names = [s.strip() for s in skills_str.split(",") if s.strip()]
+            elif isinstance(skills_str, list):
+                skill_names = [s.strip() if isinstance(s, str) else s.get("name", "") for s in skills_str]
+            else:
+                skill_names = []
+        else:
+            parsed = self._parse_profile_from_text(user_msg)
+            name = parsed["name"]
+            email = parsed["email"]
+            phone = parsed["phone"]
+            summary = parsed["summary"]
+            current_role = parsed["current_role"]
+            location = parsed["location"]
+            exp_years = parsed["experience_years"]
+            skill_names = parsed["skill_names"]
+
+        name = name or "Muhammad Yousaf"
+        email = email or "muhammad.yousaf@example.com"
+        phone = phone or "03214417723"
+        location = location or "Remote"
+        current_role = current_role or "React Developer"
+        exp_years = exp_years or 2
+        summary = summary or f"{current_role} with {exp_years} years of experience building responsive web applications. Proficient in modern React ecosystem including Hooks, Redux, TypeScript, and Next.js. Experienced in building full-stack applications with REST APIs and database integration."
+
+        if not skill_names:
+            skill_names = ["React", "TypeScript", "Next.js", "JavaScript", "Redux", "Tailwind CSS", "Node.js"]
+
+        # Merge JD keywords with profile skills
+        all_keywords = list(dict.fromkeys(skill_names + jd_keywords))
+
         if "extract" in combined and "structure" in combined:
             return json.dumps({
-                "basics": {"name": "Jane Dev", "email": "jane@test.com", "phone": "+1234567890",
-                           "summary": "Experienced developer", "location": {"city": "Dubai"}},
-                "skills": [{"name": "Python", "keywords": ["Flask", "FastAPI"]}],
-                "work": [{"name": "Tech Co", "position": "Developer", "start_date": "2022-01",
-                          "highlights": ["Built web apps with Flask"]}],
-                "projects": [{"name": "Web App", "description": "Built with Flask and React"}],
-                "education": [{"institution": "University", "area": "CS", "study_type": "BS"}]
+                "basics": {"name": name, "email": email, "phone": phone,
+                           "summary": summary, "location": {"city": location or "Remote"}},
+                "skills": [{"name": "Technical", "keywords": all_keywords[:8]}],
+                "work": [{"name": "Current Company", "position": current_role or "Engineer",
+                          "start_date": "2022-01", "highlights": [f"Built systems using {', '.join(all_keywords[:3])}"]}],
+                "projects": [{"name": "Key Project", "description": f"Built with {', '.join(all_keywords[:4])}"}],
+                "education": [{"institution": "University", "area": "Computer Science", "study_type": "BSc"}]
             })
-        
+
         if "analyze" in combined and "job" in combined:
             return json.dumps({
-                "job_title": "Software Developer", "company_name": "Tech Corp",
-                "required_skills": ["Python", "Flask"], "preferred_skills": [],
-                "tools_and_technologies": ["Flask"], "experience_years_min": 2,
-                "education_level": "Bachelor's", "keywords": ["Python", "Flask"],
-                "ats_keywords": ["Python", "Flask"], "soft_skills": ["Teamwork"],
-                "responsibilities": ["Develop Flask apps"], "qualifications": ["Python exp"],
+                "job_title": "Software Engineer", "company_name": "Target Company",
+                "required_skills": all_keywords[:6], "preferred_skills": all_keywords[6:10],
+                "tools_and_technologies": all_keywords[:8], "experience_years_min": max(2, min(exp_years, 8)),
+                "education_level": "Bachelor's", "keywords": all_keywords,
+                "ats_keywords": all_keywords[:6], "soft_skills": ["Teamwork", "Communication"],
+                "responsibilities": [f"Develop solutions with {', '.join(all_keywords[:4])}"],
+                "qualifications": [f"Proven experience with {', '.join(all_keywords[:3])}"],
                 "is_weak_description": False, "weak_description_notes": []
             })
-        
-        if "match score" in combined or "calculate" in combined and "match" in combined:
+
+        if "match score" in combined or ("calculate" in combined and "match" in combined):
+            missing = [kw for kw in jd_keywords if kw not in skill_names]
             return json.dumps({
-                "overall_score": 78, "keyword_match_rate": 0.72, "experience_match": 75,
-                "education_match": 80, "matched_keywords": ["Python", "Flask"],
-                "missing_keywords": ["Docker"], "bonus_keywords": [],
-                "gap_analysis": {"skills_gap": "Missing Docker"},
-                "recommendations": ["Add Docker experience if applicable"]
+                "overall_score": max(50, min(95, 70 + len(jd_keywords) * 3 - len(missing) * 5)),
+                "keyword_match_rate": round(max(0.4, min(0.95, 0.7 + len([k for k in jd_keywords if k in skill_names]) / max(len(jd_keywords), 1) * 0.3)), 2),
+                "experience_match": min(100, exp_years * 15 + 30),
+                "education_match": 85,
+                "matched_keywords": [kw for kw in jd_keywords if kw in skill_names],
+                "missing_keywords": missing,
+                "bonus_keywords": [kw for kw in skill_names if kw not in jd_keywords][:3],
+                "gap_analysis": {"skills_gap": f"Missing {', '.join(missing[:3])}" if missing else "Good match"},
+                "recommendations": [f"Add {kw} experience if applicable" for kw in missing[:3]] if missing else ["Continue building on current stack"]
             })
-        
-        # Default: step4 tailor response
+
+        # Default: step4 tailor response — use real profile data
+        # Split skills into categories
+        mid = len(all_keywords) // 2
+        cat1 = all_keywords[:mid]
+        cat2 = all_keywords[mid:]
+
         return json.dumps({
-            "basics": {"name": "Jane Dev", "email": "jane@test.com", "phone": "+1234567890",
-                       "summary": "Junior Python developer with Flask experience seeking new role.",
-                       "label": "Junior Developer", "location": {"city": "Dubai"}},
-            "skills": [{"name": "Programming", "keywords": ["Python", "Flask", "REST APIs"]}],
-            "work": [{"name": "Tech Startup", "position": "Junior Developer", "start_date": "2022-01",
-                      "highlights": ["Built REST APIs with Flask", "Worked in agile team of 5 developers"]}],
-            "projects": [{"name": "Task Manager API", "description": "RESTful Flask API with SQLAlchemy",
-                          "highlights": ["Designed RESTful endpoints", "Integrated PostgreSQL"]}],
-            "education": [{"institution": "Tech University", "area": "Computer Science", "study_type": "BSc"}]
+            "basics": {"name": name, "email": email, "phone": phone,
+                       "summary": summary,
+                       "label": current_role or "Software Engineer",
+                       "location": {"city": location or "Remote"}},
+            "skills": [
+                {"name": "Core", "keywords": cat1[:6]},
+                {"name": "Additional", "keywords": cat2[:6]},
+            ],
+            "work": [{"name": "Company", "position": current_role or "Software Engineer",
+                      "start_date": "2022-01",
+                      "highlights": [
+                          f"Built and maintained systems using {', '.join(all_keywords[:4])}",
+                          f"Collaborated on cross-functional teams delivering {', '.join(all_keywords[2:6])} solutions",
+                          f"Optimized performance and scalability of existing architecture",
+                      ]}],
+            "projects": [{"name": "Platform Architecture", "description": f"Designed and implemented scalable solutions using {', '.join(all_keywords[:4])}",
+                          "highlights": [f"Delivered production-ready systems with {', '.join(all_keywords[:5])}"],
+                          "keywords": all_keywords[:6]}],
+            "education": [{"institution": "University", "area": "Computer Science", "study_type": "BSc"}]
         })
 
     async def _call_gemini(
