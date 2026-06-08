@@ -4,8 +4,7 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import { Mail, Loader2, Download, Copy, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { apiPostForm } from "@/lib/api-client";
 
 interface CoverLetterGeneratorProps {
   resumeId: string;
@@ -21,7 +20,7 @@ export function CoverLetterGenerator({ resumeId, jobDescription, onClose }: Cove
 
   const generateCoverLetter = async () => {
     setGenerating(true);
-    
+
     try {
       const formData = new FormData();
       formData.append("resume_id", resumeId);
@@ -29,16 +28,12 @@ export function CoverLetterGenerator({ resumeId, jobDescription, onClose }: Cove
       formData.append("company_name", "");
       formData.append("hiring_manager", "");
 
-      const res = await fetch(`${API_URL}/api/resume/cover-letter`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        setCoverLetter(data.cover_letter_text);
-        setPdfUrl(data.pdf_path);
-      }
+      const data = await apiPostForm<{ cover_letter_text: string; pdf_path: string }>(
+        "/api/resume/cover-letter",
+        formData,
+      );
+      setCoverLetter(data.cover_letter_text);
+      setPdfUrl(data.pdf_path);
     } catch (error) {
       console.error("Failed to generate cover letter", error);
     } finally {
@@ -53,7 +48,8 @@ export function CoverLetterGenerator({ resumeId, jobDescription, onClose }: Cove
   };
 
   const downloadPdf = () => {
-    window.open(`${API_URL}${pdfUrl}`, "_blank");
+    const baseUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    window.open(`${baseUrl}${pdfUrl}`, "_blank");
   };
 
   return (

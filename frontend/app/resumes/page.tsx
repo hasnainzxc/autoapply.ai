@@ -7,6 +7,11 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Navbar } from "@/components/navbar";
 import { Button } from "@/components/ui/button";
 import { GlassCard } from "@/components/ui/glass-card";
+import { TailoringProgress } from "@/components/ui/tailoring-progress";
+import { ResumePreview } from "@/components/resume-preview";
+import { ProfileForm, type ProfileData } from "@/components/profile-form";
+import { apiGet, apiPostForm } from "@/lib/api-client";
+import type { TailoredResumeSchema } from "@/lib/resume-to-html";
 import { 
   Upload, 
   FileText, 
@@ -16,10 +21,15 @@ import {
   ChevronRight,
   Sparkles,
   X,
-  Loader2
+  Loader2,
+  Zap,
+  Target,
+  BarChart3,
+  Star,
+  Award,
+  Download,
+  Wand2
 } from "lucide-react";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
 interface Resume {
   id: string;
@@ -36,6 +46,45 @@ interface TailoredResume {
   status: string;
   pdf_path: string;
   created_at: string;
+  ats_score?: number;
+  matched_keywords?: string[];
+  missing_keywords?: string[];
+  template_used?: string;
+}
+
+interface Template {
+  id: string;
+  name: string;
+  description: string;
+  ats_score: string;
+  visually_striking: boolean;
+}
+
+interface TailoringResult {
+  ats_score: number;
+  matched_keywords: string[];
+  missing_keywords: string[];
+  ats_breakdown?: Record<string, number>;
+  job_title?: string;
+}
+
+interface TailorV3Response {
+  status: "success";
+  tailored_resume_id: string;
+  tailored_resume: TailoredResumeSchema;
+  ats_analysis: {
+    overall_score: number;
+    breakdown: Record<string, number>;
+    matched_keywords: string[];
+    missing_keywords: string[];
+    recommendations: string[];
+  };
+  match_score: {
+    overall_score: number;
+    keyword_match: number;
+    experience_match: number;
+    skills_gap: string[];
+  };
 }
 
 function extractResumeName(filename: string): string {
@@ -77,24 +126,6 @@ function LastUsedIndicator({ resumeName }: { resumeName: string }) {
               transition={{ duration: 2, repeat: Infinity }}
               className="absolute -top-1 -right-1 w-3 h-3 bg-green-400 rounded-full"
             />
-            <svg className="absolute -bottom-2 -left-2 w-6 h-6" viewBox="0 0 24 24" fill="none">
-              <motion.path
-                d="M2 12 C 8 8, 12 16, 22 12"
-                stroke="url(#grad1)"
-                strokeWidth="2"
-                fill="none"
-                strokeLinecap="round"
-                initial={{ pathLength: 0 }}
-                animate={{ pathLength: 1 }}
-                transition={{ duration: 1.5, repeat: Infinity, repeatDelay: 2 }}
-              />
-              <defs>
-                <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="0%">
-                  <stop offset="0%" stopColor="#22c55e" />
-                  <stop offset="100%" stopColor="#10b981" />
-                </linearGradient>
-              </defs>
-            </svg>
           </div>
           
           <div className="flex-1 min-w-0">
@@ -141,40 +172,35 @@ function ResumeCard({
   isLastUsed: boolean;
 }) {
   const [isDeleting, setIsDeleting] = useState(false);
-  
-  const handleDelete = async (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const resumeName = resume.name || extractResumeName(resume.original_file_path);
+
+  const handleDelete = async () => {
     setIsDeleting(true);
     await onDelete(resume.id);
     setIsDeleting(false);
   };
-  
-  const resumeName = resume.name || extractResumeName(resume.original_file_path);
-  
+
   return (
     <motion.div
-      layout
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, x: -20 }}
+      exit={{ opacity: 0, y: -10 }}
       onClick={() => onSelect(resume.id)}
       className={`
-        group relative p-3 sm:p-4 rounded-2xl border cursor-pointer transition-all duration-300
+        group relative p-3 sm:p-4 rounded-xl border cursor-pointer transition-all duration-300
         ${isSelected 
-          ? 'bg-[#FACC15]/10 border-[#FACC15]/50 shadow-[0_0_20px_-5px_rgba(250,204,21,0.3)]' 
-          : isLastUsed
-            ? 'bg-green-500/5 border-green-500/20 hover:border-green-500/40 hover:bg-green-500/10'
-            : 'bg-white/5 border-white/5 hover:border-white/20 hover:bg-white/10'
+          ? 'bg-[#FACC15]/10 border-[#FACC15]/30' 
+          : 'bg-white/5 border-white/5 hover:bg-white/10 hover:border-white/10'
         }
       `}
     >
+      {isSelected && (
+        <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-[#FACC15]/5 to-transparent pointer-events-none" />
+      )}
+      
       {isLastUsed && (
-        <div className="absolute -top-2 -right-2 sm:-right-3">
-          <div className="flex items-center gap-1 px-2 py-1 bg-green-500 text-black text-[10px] font-bold rounded-full">
-            <Clock className="w-3 h-3" />
-            <span className="hidden sm:inline">LAST USED</span>
-            <span className="sm:hidden">USED</span>
-          </div>
+        <div className="absolute -top-1 -right-3 flex items-center gap-1 px-2 py-0.5 bg-green-500/20 border border-green-500/30 rounded-full">
+          <span className="text-[10px] font-medium text-green-400">LAST USED</span>
         </div>
       )}
       
@@ -222,7 +248,7 @@ function ResumeCard({
                 className="rounded-full text-xs sm:text-sm bg-[#FACC15] text-black hover:bg-[#FACC15]/90"
                 onClick={(e) => { e.stopPropagation(); onSelect(resume.id); }}
               >
-                Use
+                <ChevronRight className="w-4 h-4" />
               </Button>
             </>
           )}
@@ -237,6 +263,62 @@ function ResumeCard({
           transition={{ duration: 0.5 }}
         />
       )}
+    </motion.div>
+  );
+}
+
+function TailoringResultCard({ result }: { result: TailoringResult }) {
+  const scoreColor = result.ats_score >= 80 ? 'text-green-400' : result.ats_score >= 60 ? 'text-yellow-400' : 'text-red-400';
+  
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.95 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className="bg-gradient-to-br from-[#FACC15]/10 to-transparent border border-[#FACC15]/20 rounded-2xl p-4 sm:p-6"
+    >
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-3">
+          <div className="w-12 h-12 rounded-xl bg-[#FACC15]/20 flex items-center justify-center">
+            <Award className="w-6 h-6 text-[#FACC15]" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-white">ATS Score</h3>
+            <p className="text-xs text-[#6B6B6B]">Resume Optimization</p>
+          </div>
+        </div>
+        <div className={`text-4xl font-bold ${scoreColor}`}>
+          {result.ats_score}
+          <span className="text-lg text-[#6B6B6B]">/100</span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="p-3 bg-green-500/10 rounded-xl border border-green-500/20">
+          <div className="flex items-center gap-2 mb-1">
+            <CheckCircle2 className="w-4 h-4 text-green-400" />
+            <span className="text-xs text-green-400 font-medium">Matched</span>
+          </div>
+          <p className="text-sm text-white font-medium">
+            {result.matched_keywords?.slice(0, 5).join(', ')}
+            {result.matched_keywords && result.matched_keywords.length > 5 && (
+              <span className="text-[#6B6B6B]"> +{result.matched_keywords.length - 5} more</span>
+            )}
+          </p>
+        </div>
+        
+        <div className="p-3 bg-red-500/10 rounded-xl border border-red-500/20">
+          <div className="flex items-center gap-2 mb-1">
+            <X className="w-4 h-4 text-red-400" />
+            <span className="text-xs text-red-400 font-medium">Missing</span>
+          </div>
+          <p className="text-sm text-white font-medium">
+            {result.missing_keywords?.slice(0, 5).join(', ')}
+            {result.missing_keywords && result.missing_keywords.length > 5 && (
+              <span className="text-[#6B6B6B]"> +{result.missing_keywords.length - 5} more</span>
+            )}
+          </p>
+        </div>
+      </div>
     </motion.div>
   );
 }
@@ -272,30 +354,44 @@ export default function ResumesPage() {
   const [lastUsedResume, setLastUsedResume] = useState<string | null>(null);
   const [jobDescription, setJobDescription] = useState("");
   const [tailoring, setTailoring] = useState(false);
+  const [tailoringStep, setTailoringStep] = useState(0);
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [selectedTemplate, setSelectedTemplate] = useState("modern_tech");
+  const [tailoringResult, setTailoringResult] = useState<TailoringResult | null>(null);
+  const [tailoredResumeData, setTailoredResumeData] = useState<TailoredResumeSchema | null>(null);
+  const [inputMode, setInputMode] = useState<"upload" | "manual">("upload");
+  const profileFormRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isLoaded && !user) router.push("/sign-in");
-    if (user) fetchResumes();
+    if (user) {
+      fetchResumes();
+      fetchTemplates();
+    }
   }, [isLoaded, user, router]);
 
   const fetchResumes = async () => {
     try {
-      const res = await fetch(`${API_URL}/api/resumes`);
-      if (res.ok) {
-        const data = await res.json();
-        const resumeList = (data.resumes || []).map((r: Resume) => ({
-          ...r,
-          name: extractResumeName(r.original_file_path)
-        }));
-        setResumes(resumeList);
-        setTailoredResumes(data.tailored || []);
-        
-        if (resumeList.length > 0 && !lastUsedResume) {
-          setLastUsedResume(resumeList[0].id);
-        }
+      const data = await apiGet<{ resumes: Resume[]; tailored: TailoredResume[] }>("/api/resumes");
+      const resumeList = (data.resumes || []).map((r: Resume) => ({
+        ...r,
+        name: extractResumeName(r.original_file_path)
+      }));
+      setResumes(resumeList);
+      setTailoredResumes(data.tailored || []);
+      
+      if (resumeList.length > 0 && !lastUsedResume) {
+        setLastUsedResume(resumeList[0].id);
       }
     } catch (error) { console.error("Failed to fetch resumes", error); }
+  };
+
+  const fetchTemplates = async () => {
+    try {
+      const data = await apiGet<{ templates: Template[] }>("/api/resume/templates");
+      setTemplates(data.templates || []);
+    } catch (error) { console.error("Failed to fetch templates", error); }
   };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -305,26 +401,24 @@ export default function ResumesPage() {
     const formData = new FormData();
     formData.append("file", file);
     try {
-      const res = await fetch(`${API_URL}/api/resume/upload`, { method: "POST", body: formData });
-      if (res.ok) {
-        const data = await res.json();
-        const newResume: Resume = { 
-          id: data.resume_id, 
-          original_file_path: file.name, 
-          extracted_text: "", 
-          created_at: new Date().toISOString(),
-          name: extractResumeName(file.name)
-        };
-        setResumes((prev) => [newResume, ...prev]);
-        if (!lastUsedResume) setLastUsedResume(newResume.id);
-      }
+      const data = await apiPostForm<{ resume_id: string }>("/api/resume/upload", formData);
+      const newResume: Resume = { 
+        id: data.resume_id, 
+        original_file_path: file.name, 
+        extracted_text: "", 
+        created_at: new Date().toISOString(),
+        name: extractResumeName(file.name)
+      };
+      setResumes((prev) => [newResume, ...prev]);
+      if (!lastUsedResume) setLastUsedResume(newResume.id);
     } catch (error) { console.error("Upload failed", error); }
     finally { setUploading(false); }
   };
 
   const handleDelete = async (id: string) => {
     try {
-      const res = await fetch(`${API_URL}/api/resumes/${id}`, { method: "DELETE" });
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+      const res = await fetch(`${apiUrl}/api/resumes/${id}`, { method: "DELETE" });
       if (res.ok || res.status === 404) {
         setResumes((prev) => prev.filter(r => r.id !== id));
         if (selectedResume === id) setSelectedResume(null);
@@ -339,26 +433,101 @@ export default function ResumesPage() {
   const handleSelectResume = (id: string) => {
     setSelectedResume(id);
     setLastUsedResume(id);
+    setTailoringResult(null);
+    setTailoredResumeData(null);
+  };
+
+  const simulateTailoringProgress = () => {
+    setTailoringStep(1);
+    setTimeout(() => setTailoringStep(2), 1500);
+    setTimeout(() => setTailoringStep(3), 3000);
+    setTimeout(() => setTailoringStep(4), 4500);
   };
 
   const handleTailor = async () => {
     if (!selectedResume || !jobDescription.trim()) return;
     setTailoring(true);
+    setTailoringResult(null);
+    setTailoredResumeData(null);
+    simulateTailoringProgress();
+    
     try {
       const formData = new FormData();
       formData.append("resume_id", selectedResume);
       formData.append("job_description", jobDescription);
-      const res = await fetch(`${API_URL}/api/resume/tailor`, { method: "POST", body: formData });
-      if (res.ok) {
-        const data = await res.json();
-        setTailoredResumes((prev) => [{ id: data.tailored_resume_id, job_description: jobDescription, status: "completed", pdf_path: data.pdf_path, created_at: new Date().toISOString() }, ...prev]);
-        setJobDescription("");
-      }
+      formData.append("template", selectedTemplate);
+      const data = await apiPostForm<TailorV3Response>("/api/resume/tailor-v3", formData);
+      setTailoredResumes((prev) => [{ 
+        id: data.tailored_resume_id, 
+        job_description: jobDescription, 
+        status: "completed", 
+        pdf_path: "", 
+        created_at: new Date().toISOString(),
+        ats_score: data.ats_analysis.overall_score,
+        matched_keywords: data.ats_analysis.matched_keywords,
+        missing_keywords: data.ats_analysis.missing_keywords,
+        template_used: selectedTemplate
+      }, ...prev]);
+      setTailoringResult({
+        ats_score: data.ats_analysis.overall_score,
+        matched_keywords: data.ats_analysis.matched_keywords,
+        missing_keywords: data.ats_analysis.missing_keywords,
+        ats_breakdown: data.ats_analysis.breakdown,
+        job_title: data.tailored_resume.basics?.name
+      });
+      setTailoredResumeData(data.tailored_resume);
+      setJobDescription("");
     } catch (error) { console.error("Tailoring failed", error); }
-    finally { setTailoring(false); }
+    finally { 
+      setTailoring(false);
+      setTailoringStep(0);
+    }
   };
 
-  const downloadPDF = (url: string) => { window.open(`${API_URL}${url}`, "_blank"); };
+  const handleProfileSubmit = async (profileData: ProfileData) => {
+    if (!jobDescription.trim()) return;
+    setTailoring(true);
+    setTailoringResult(null);
+    setTailoredResumeData(null);
+    simulateTailoringProgress();
+
+    try {
+      const formData = new FormData();
+      formData.append("profile_data", JSON.stringify(profileData));
+      formData.append("job_description", jobDescription);
+      formData.append("template", selectedTemplate);
+      const data = await apiPostForm<TailorV3Response>("/api/resume/tailor-v3", formData);
+      setTailoredResumes((prev) => [{
+        id: data.tailored_resume_id,
+        job_description: jobDescription,
+        status: "completed",
+        pdf_path: "",
+        created_at: new Date().toISOString(),
+        ats_score: data.ats_analysis.overall_score,
+        matched_keywords: data.ats_analysis.matched_keywords,
+        missing_keywords: data.ats_analysis.missing_keywords,
+        template_used: selectedTemplate
+      }, ...prev]);
+      setTailoringResult({
+        ats_score: data.ats_analysis.overall_score,
+        matched_keywords: data.ats_analysis.matched_keywords,
+        missing_keywords: data.ats_analysis.missing_keywords,
+        ats_breakdown: data.ats_analysis.breakdown,
+        job_title: data.tailored_resume.basics?.name
+      });
+      setTailoredResumeData(data.tailored_resume);
+      setJobDescription("");
+    } catch (error) { console.error("Tailoring failed", error); }
+    finally {
+      setTailoring(false);
+      setTailoringStep(0);
+    }
+  };
+
+  const downloadPDF = (url: string) => { 
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    window.open(`${apiUrl}${url}`, "_blank"); 
+  };
 
   const lastUsedResumeName = resumes.find(r => r.id === lastUsedResume)?.name || 
     (resumes.find(r => r.id === lastUsedResume) ? extractResumeName(resumes.find(r => r.id === lastUsedResume)!.original_file_path) : null);
@@ -397,6 +566,38 @@ export default function ResumesPage() {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
           <div className="space-y-6">
+            {/* Input Mode Toggle */}
+            <div className="flex gap-2 p-1 bg-white/5 rounded-xl border border-white/10">
+              <button
+                onClick={() => { setInputMode("upload"); setTailoringResult(null); setTailoredResumeData(null); }}
+                className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  inputMode === "upload"
+                    ? "bg-[#FACC15] text-black shadow-lg"
+                    : "text-[#6B6B6B] hover:text-white"
+                }`}
+              >
+                <span className="flex items-center justify-center gap-2">
+                  <Upload className="w-4 h-4" />
+                  Upload Resume
+                </span>
+              </button>
+              <button
+                onClick={() => { setInputMode("manual"); setSelectedResume(null); setTailoringResult(null); setTailoredResumeData(null); }}
+                className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-all duration-200 ${
+                  inputMode === "manual"
+                    ? "bg-[#FACC15] text-black shadow-lg"
+                    : "text-[#6B6B6B] hover:text-white"
+                }`}
+              >
+                <span className="flex items-center justify-center gap-2">
+                  <FileText className="w-4 h-4" />
+                  Enter Details
+                </span>
+              </button>
+            </div>
+
+            {inputMode === "upload" ? (
+              <>
             <GlassCard className="p-4 sm:p-6">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-xl bg-[#FACC15]/20 flex items-center justify-center">
@@ -431,16 +632,38 @@ export default function ResumesPage() {
                 )}
               </div>
             </GlassCard>
+              </>
+            ) : (
+              <ProfileForm innerRef={profileFormRef} onSubmit={handleProfileSubmit} isLoading={tailoring} />
+            )}
 
-            {resumes.length > 0 && (
+            {(inputMode === "upload" ? resumes.length > 0 : true) && (
               <GlassCard className="p-4 sm:p-6">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
-                    <Sparkles className="w-5 h-5 text-purple-400" />
+                    <Wand2 className="w-5 h-5 text-purple-400" />
                   </div>
                   <h2 className="text-lg font-semibold text-white">Tailor Resume</h2>
                 </div>
+                
+                <AnimatePresence>
+                  {tailoring && tailoringStep > 0 && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="mb-6 p-4 bg-black/20 rounded-xl border border-white/5"
+                    >
+                      <TailoringProgress 
+                        currentStep={tailoringStep} 
+                        jobTitle={jobDescription.slice(0, 30)}
+                      />
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+
                 <div className="space-y-4">
+                  {inputMode === "upload" && (
                   <div>
                     <label className="text-[#6B6B6B] text-sm mb-2 block">Select Resume</label>
                     <select 
@@ -456,33 +679,108 @@ export default function ResumesPage() {
                       ))}
                     </select>
                   </div>
+                  )}
+                  
+                  {templates.length > 0 && (
+                    <div>
+                      <label className="text-[#6B6B6B] text-sm mb-2 block">
+                        <span className="flex items-center gap-2">
+                          <Sparkles className="w-3 h-3 text-[#FACC15]" />
+                          Template
+                        </span>
+                      </label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {templates.map((t) => (
+                          <button
+                            key={t.id}
+                            onClick={() => setSelectedTemplate(t.id)}
+                            className={`
+                              p-3 rounded-xl border text-left transition-all duration-200
+                              ${selectedTemplate === t.id 
+                                ? 'bg-[#FACC15]/10 border-[#FACC15]/30' 
+                                : 'bg-white/5 border-white/5 hover:bg-white/10'
+                              }
+                            `}
+                          >
+                            <p className="text-white text-sm font-medium">{t.name}</p>
+                            <p className="text-[#6B6B6B] text-xs mt-1">{t.ats_score} ATS</p>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  
                   <div>
-                    <label className="text-[#6B6B6B] text-sm mb-2 block">Job Description</label>
+                    <label className="text-[#6B6B6B] text-sm mb-2 block">
+                      <span className="flex items-center gap-2">
+                        <Target className="w-3 h-3 text-purple-400" />
+                        Job Description
+                      </span>
+                    </label>
                     <textarea 
                       value={jobDescription} 
                       onChange={(e) => setJobDescription(e.target.value)} 
                       placeholder="Paste the job description here..." 
-                      rows={4} 
-                      className="w-full bg-[#1A1A1A] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-[#FACC15] resize-none text-sm" 
+                      rows={5}
+                      disabled={tailoring}
+                      className="w-full bg-[#1A1A1A] border border-white/10 rounded-xl px-4 py-3 text-white focus:outline-none focus:ring-2 focus:ring-[#FACC15] resize-none text-sm disabled:opacity50" 
                     />
                   </div>
+                  
                   <Button 
-                    onClick={handleTailor} 
-                    disabled={!selectedResume || !jobDescription.trim() || tailoring} 
-                    className="w-full rounded-xl bg-[#FACC15] text-black hover:bg-[#FACC15]/90 font-medium"
+                    onClick={inputMode === "upload" ? handleTailor : () => profileFormRef.current?.requestSubmit()} 
+                    disabled={
+                      inputMode === "upload" 
+                        ? (!selectedResume || !jobDescription.trim() || tailoring)
+                        : (!jobDescription.trim() || tailoring)
+                    } 
+                    className="w-full rounded-xl bg-[#FACC15] text-black hover:bg-[#FACC15]/90 font-medium h-12"
                   >
                     {tailoring ? (
                       <span className="flex items-center gap-2">
                         <Loader2 className="w-4 h-4 animate-spin" />
-                        Generating...
+                        Tailoring...
                       </span>
                     ) : (
-                      "Generate Tailored Resume"
+                      <span className="flex items-center gap-2">
+                        <Sparkles className="w-4 h-4" />
+                        Generate Tailored Resume
+                      </span>
                     )}
                   </Button>
                 </div>
               </GlassCard>
             )}
+
+            <AnimatePresence>
+              {tailoringResult && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                >
+                  <TailoringResultCard result={tailoringResult} />
+                </motion.div>
+              )}
+              {tailoredResumeData && (
+                <motion.div
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="mt-6"
+                >
+                  <GlassCard className="p-4 sm:p-6">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="w-10 h-10 rounded-xl bg-[#FACC15]/20 flex items-center justify-center">
+                        <FileText className="w-5 h-5 text-[#FACC15]" />
+                      </div>
+                      <h2 className="text-lg font-semibold text-white">Tailored Resume Preview</h2>
+                    </div>
+                    <div className="min-h-[500px]">
+                      <ResumePreview resumeData={tailoredResumeData} />
+                    </div>
+                  </GlassCard>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           <div className="space-y-6">
@@ -525,9 +823,12 @@ export default function ResumesPage() {
                   <h2 className="text-lg font-semibold text-white">Tailored Versions</h2>
                 </div>
                 <div className="space-y-3">
-                  {tailoredResumes.map((resume) => (
-                    <div 
-                      key={resume.id} 
+                  {tailoredResumes.map((resume, index) => (
+                    <motion.div 
+                      key={resume.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: index * 0.1 }}
                       className="flex items-center justify-between p-3 sm:p-4 bg-white/5 rounded-xl border border-white/5"
                     >
                       <div className="flex items-center gap-3 min-w-0">
@@ -536,9 +837,26 @@ export default function ResumesPage() {
                         </div>
                         <div className="min-w-0">
                           <p className="text-white font-medium text-sm truncate">{resume.job_description.slice(0, 40)}...</p>
-                          <p className="text-[10px] sm:text-xs text-[#6B6B6B]">
-                            {new Date(resume.created_at).toLocaleDateString()}
-                          </p>
+                          <div className="flex items-center gap-2 mt-1">
+                            <span className="text-[10px] text-[#6B6B6B]">
+                              {new Date(resume.created_at).toLocaleDateString()}
+                            </span>
+                            {resume.ats_score && (
+                              <span className={`
+                                text-[10px] px-1.5 py-0.5 rounded-full
+                                ${resume.ats_score >= 80 ? 'bg-green-500/20 text-green-400' : 
+                                  resume.ats_score >= 60 ? 'bg-yellow-500/20 text-yellow-400' : 
+                                  'bg-red-500/20 text-red-400'}
+                              `}>
+                                {resume.ats_score}/100
+                              </span>
+                            )}
+                            {resume.template_used && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-500/20 text-purple-400">
+                                {resume.template_used}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                       <Button 
@@ -546,9 +864,10 @@ export default function ResumesPage() {
                         className="rounded-xl bg-green-500 text-black hover:bg-green-400 flex-shrink-0 text-xs sm:text-sm"
                         onClick={() => downloadPDF(`/api/resume/${resume.id}/download`)}
                       >
+                        <Download className="w-4 h-4 mr-1" />
                         Download
                       </Button>
-                    </div>
+                    </motion.div>
                   ))}
                 </div>
               </GlassCard>

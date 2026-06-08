@@ -1,0 +1,467 @@
+/**
+ * Resume Templates CSS — Print-optimized, ATS-safe single-column layout.
+ * Inspired by career-ops cv-template.html design.
+ *
+ * Fonts: Space Grotesk (headings) + DM Sans (body)
+ * Self-hosted woff2 files expected in /fonts/
+ */
+
+/* ============================================================
+   @font-face — self-hosted Space Grotesk + DM Sans
+   ============================================================ */
+
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('/fonts/space-grotesk-latin.woff2') format('woff2');
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'Space Grotesk';
+  src: url('/fonts/space-grotesk-latin-ext.woff2') format('woff2');
+  font-weight: 300 700;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0100-02AF, U+0304, U+0308, U+0329, U+1E00-1E9F, U+1EF2-1EFF,
+    U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+@font-face {
+  font-family: 'DM Sans';
+  src: url('/fonts/dm-sans-latin.woff2') format('woff2');
+  font-weight: 100 1000;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+    U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: 'DM Sans';
+  src: url('/fonts/dm-sans-latin-ext.woff2') format('woff2');
+  font-weight: 100 1000;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0100-02AF, U+0304, U+0308, U+0329, U+1E00-1E9F, U+1EF2-1EFF,
+    U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
+/* ============================================================
+   Theme CSS Custom Properties
+   ============================================================ */
+
+.resume-template--modern {
+  --cv-primary: hsl(187, 74%, 32%);
+  --cv-accent: hsl(270, 70%, 45%);
+  --cv-gradient: linear-gradient(to right, hsl(187, 74%, 32%), hsl(270, 70%, 45%));
+  --cv-tag-bg: hsl(187, 40%, 95%);
+  --cv-tag-border: hsl(187, 40%, 88%);
+  --cv-tag-color: hsl(187, 74%, 28%);
+  --cv-heading-color: hsl(187, 74%, 32%);
+  --cv-company-color: hsl(270, 70%, 45%);
+  --cv-project-color: hsl(270, 70%, 45%);
+  --cv-border-light: #e2e2e2;
+}
+
+.resume-template--classic {
+  --cv-primary: #333333;
+  --cv-accent: #666666;
+  --cv-gradient: linear-gradient(to right, #333333, #666666);
+  --cv-tag-bg: #f5f5f5;
+  --cv-tag-border: #e0e0e0;
+  --cv-tag-color: #333333;
+  --cv-heading-color: #222222;
+  --cv-company-color: #444444;
+  --cv-project-color: #444444;
+  --cv-border-light: #cccccc;
+}
+
+.resume-template--executive {
+  --cv-primary: #1a7a6b;
+  --cv-accent: #c9a84c;
+  --cv-gradient: linear-gradient(to right, #1a7a6b, #c9a84c);
+  --cv-tag-bg: hsl(170, 40%, 95%);
+  --cv-tag-border: hsl(170, 40%, 88%);
+  --cv-tag-color: hsl(170, 60%, 24%);
+  --cv-heading-color: #1a7a6b;
+  --cv-company-color: #1a7a6b;
+  --cv-project-color: #1a7a6b;
+  --cv-border-light: #d4d4d4;
+}
+
+/* ============================================================
+   Global Reset (scoped to resume preview container)
+   ============================================================ */
+
+.resume-preview *,
+.resume-preview *::before,
+.resume-preview *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.resume-preview {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  line-height: 1.5;
+  color: #1a1a2e;
+  background: #ffffff;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
+
+/* ============================================================
+   Page
+   ============================================================ */
+
+.resume-page {
+  width: 100%;
+  max-width: 8.5in;
+  margin: 0 auto;
+  padding: 2px 0;
+}
+
+/* ============================================================
+   Header
+   ============================================================ */
+
+.cv-header {
+  margin-bottom: 20px;
+}
+
+.cv-header h1 {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 28px;
+  font-weight: 700;
+  color: #1a1a2e;
+  letter-spacing: -0.02em;
+  margin-bottom: 6px;
+  line-height: 1.1;
+}
+
+.cv-header-gradient {
+  height: 2px;
+  background: var(--cv-gradient);
+  border-radius: 1px;
+  margin-bottom: 10px;
+}
+
+.cv-contact-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: #555;
+}
+
+.cv-contact-row a {
+  color: #555;
+  text-decoration: none;
+}
+
+.cv-contact-row .cv-separator {
+  color: #ccc;
+}
+
+/* ============================================================
+   Sections
+   ============================================================ */
+
+.cv-section {
+  margin-bottom: 18px;
+}
+
+.cv-section-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--cv-heading-color);
+  border-bottom: 1.5px solid var(--cv-border-light);
+  padding-bottom: 4px;
+  margin-bottom: 10px;
+  line-height: 1.2;
+}
+
+/* ============================================================
+   Professional Summary
+   ============================================================ */
+
+.cv-summary-text {
+  font-size: 11px;
+  line-height: 1.7;
+  color: #2f2f2f;
+}
+
+/* ============================================================
+   Links — never break across lines
+   ============================================================ */
+
+.resume-preview a {
+  white-space: nowrap;
+}
+
+/* ============================================================
+   Core Competencies
+   ============================================================ */
+
+.cv-competencies-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.cv-competency-tag {
+  font-family: 'DM Sans', sans-serif;
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--cv-tag-color);
+  background: var(--cv-tag-bg);
+  padding: 4px 10px;
+  border-radius: 3px;
+  border: 1px solid var(--cv-tag-border);
+}
+
+/* ============================================================
+   Work Experience
+   ============================================================ */
+
+.cv-job {
+  margin-bottom: 14px;
+}
+
+.cv-job-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 4px;
+}
+
+.cv-job-company {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--cv-company-color);
+}
+
+.cv-job-period {
+  font-size: 10.5px;
+  color: #777;
+  white-space: nowrap;
+}
+
+.cv-job-role {
+  font-size: 11px;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 6px;
+}
+
+.cv-job-location {
+  font-size: 10px;
+  color: #888;
+}
+
+.cv-job ul {
+  padding-left: 18px;
+  margin-top: 6px;
+}
+
+.cv-job li {
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: #333;
+  margin-bottom: 4px;
+}
+
+.cv-job li strong {
+  font-weight: 600;
+}
+
+/* ============================================================
+   Projects
+   ============================================================ */
+
+.cv-project {
+  margin-bottom: 12px;
+}
+
+.cv-project-title {
+  font-family: 'Space Grotesk', sans-serif;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--cv-project-color);
+}
+
+.cv-project-badge {
+  font-size: 9px;
+  font-weight: 500;
+  color: var(--cv-primary);
+  background: var(--cv-tag-bg);
+  padding: 1px 6px;
+  border-radius: 2px;
+  margin-left: 6px;
+}
+
+.cv-project-desc {
+  font-size: 10.5px;
+  color: #444;
+  margin-top: 3px;
+  line-height: 1.55;
+}
+
+.cv-project-tech {
+  font-size: 9.5px;
+  color: #888;
+  margin-top: 3px;
+}
+
+/* ============================================================
+   Education
+   ============================================================ */
+
+.cv-edu-item {
+  margin-bottom: 8px;
+}
+
+.cv-edu-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.cv-edu-title {
+  font-weight: 600;
+  font-size: 11px;
+  color: #333;
+}
+
+.cv-edu-org {
+  color: var(--cv-accent);
+  font-weight: 500;
+}
+
+.cv-edu-year {
+  font-size: 10px;
+  color: #777;
+  white-space: nowrap;
+}
+
+.cv-edu-desc {
+  font-size: 10px;
+  color: #666;
+  margin-top: 2px;
+  line-height: 1.5;
+}
+
+/* ============================================================
+   Certifications
+   ============================================================ */
+
+.cv-cert-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(90px, max-content) 44px;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.cv-cert-title {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: #333;
+  min-width: 0;
+}
+
+.cv-cert-org {
+  color: var(--cv-accent);
+  white-space: nowrap;
+}
+
+.cv-cert-year {
+  font-size: 10px;
+  color: #777;
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* ============================================================
+   Skills
+   ============================================================ */
+
+.cv-skills-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+}
+
+.cv-skill-item {
+  font-size: 10.5px;
+  color: #444;
+}
+
+.cv-skill-category {
+  font-weight: 600;
+  color: #333;
+  font-size: 10.5px;
+}
+
+/* ============================================================
+   Print Styles
+   ============================================================ */
+
+@media print {
+  @page {
+    size: letter;
+    margin: 0.6in;
+  }
+
+  .resume-preview {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  .resume-preview * {
+    font-kerning: none !important;
+    font-variant-ligatures: none !important;
+    text-rendering: optimizeSpeed !important;
+  }
+
+  .resume-page {
+    padding: 0;
+    max-width: none;
+  }
+
+  /* Hide all UI chrome when printing */
+  .resume-toolbar,
+  .resume-template-selector,
+  .resume-no-print {
+    display: none !important;
+  }
+}
+
+/* ============================================================
+   Page Break Control
+   ============================================================ */
+
+.cv-header,
+.cv-section,
+.cv-job,
+.cv-project,
+.cv-edu-item,
+.cv-cert-item {
+  break-inside: avoid;
+  page-break-inside: avoid;
+}

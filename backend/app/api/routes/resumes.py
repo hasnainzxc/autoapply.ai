@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 from typing import Optional
@@ -61,12 +61,23 @@ def html_to_pdf(html_content: str) -> bytes:
         raise Exception(f"PDF generation failed: {str(e)}")
 
 
-@router.get("/resumes")
+async def deprecation_header(response: Response):
+    """Add deprecation warning headers to V1 endpoints"""
+    response.headers["X-Deprecated"] = "true"
+    response.headers["X-API-Version"] = "1"
+    response.headers["X-Deprecated-Message"] = "Use /api/resume/tailor-v3 instead"
+
+
+@router.get("/resumes", dependencies=[Depends(deprecation_header)])
 async def list_resumes(
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)
 ):
-    """List user's resumes and tailored versions"""
+    """List user's resumes and tailored versions
+    
+    ## Deprecated
+    Use `/api/resume/tailor-v3` instead.
+    """
     resumes = db.query(Resume).filter(Resume.user_id == current_user).order_by(Resume.created_at.desc()).all()
     tailored = db.query(TailoredResume).filter(TailoredResume.user_id == current_user).order_by(TailoredResume.created_at.desc()).all()
     
@@ -94,13 +105,17 @@ async def list_resumes(
     }
 
 
-@router.delete("/resumes/{resume_id}")
+@router.delete("/resumes/{resume_id}", dependencies=[Depends(deprecation_header)])
 async def delete_resume(
     resume_id: str,
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)
 ):
-    """Delete a resume and its associated data"""
+    """Delete a resume and its associated data
+    
+    ## Deprecated
+    Use `/api/resume/tailor-v3` instead.
+    """
     try:
         resume_uuid = uuid.UUID(resume_id)
     except ValueError:
@@ -170,13 +185,17 @@ def extract_text_from_file(file_path: Path, filename: str) -> str:
         raise Exception(f"Unsupported file type: {ext}")
 
 
-@router.post("/resume/upload")
+@router.post("/resume/upload", dependencies=[Depends(deprecation_header)])
 async def upload_resume(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)
 ):
-    """Upload resume PDF or DOCX"""
+    """Upload resume PDF or DOCX
+    
+    ## Deprecated
+    Use `/api/resume/tailor-v3` instead.
+    """
     
     if not file.filename.endswith(('.pdf', '.docx')):
         raise HTTPException(status_code=400, detail="Only PDF or DOCX files supported")
@@ -237,7 +256,7 @@ async def upload_resume(
         raise HTTPException(status_code=500, detail=f"Upload failed: {str(e)}")
 
 
-@router.post("/resume/tailor")
+@router.post("/resume/tailor", dependencies=[Depends(deprecation_header)])
 async def tailor_resume(
     resume_id: str = Form(...),
     job_description: str = Form(...),
@@ -245,7 +264,11 @@ async def tailor_resume(
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)
 ):
-    """Tailor resume for a job description using LLM"""
+    """Tailor resume for a job description using LLM
+    
+    ## Deprecated
+    Use `/api/resume/tailor-v3` instead.
+    """
     
     openrouter_key = os.getenv("OPENROUTER_API_KEY")
     if not openrouter_key or openrouter_key == "your_openrouter_key":
@@ -552,13 +575,17 @@ Return ONLY valid JSON. No markdown, no explanations.
         raise HTTPException(status_code=500, detail=f"Tailoring failed: {str(e)}")
 
 
-@router.get("/resume/{tailored_resume_id}/download")
+@router.get("/resume/{tailored_resume_id}/download", dependencies=[Depends(deprecation_header)])
 async def download_tailored_resume(
     tailored_resume_id: str,
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)
 ):
-    """Download generated PDF"""
+    """Download generated PDF
+    
+    ## Deprecated
+    Use `/api/resume/tailor-v3` instead.
+    """
     
     try:
         resume_uuid = uuid.UUID(tailored_resume_id)
@@ -586,13 +613,17 @@ async def download_tailored_resume(
     )
 
 
-@router.get("/resume/events/{tailored_resume_id}")
+@router.get("/resume/events/{tailored_resume_id}", dependencies=[Depends(deprecation_header)])
 async def get_resume_events(
     tailored_resume_id: str,
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)
 ):
-    """Get events for a tailored resume"""
+    """Get events for a tailored resume
+    
+    ## Deprecated
+    Use `/api/resume/tailor-v3` instead.
+    """
     
     try:
         resume_uuid = uuid.UUID(tailored_resume_id)
@@ -615,7 +646,7 @@ async def get_resume_events(
     ]
 
 
-@router.post("/resume/cover-letter")
+@router.post("/resume/cover-letter", dependencies=[Depends(deprecation_header)])
 async def generate_cover_letter(
     resume_id: str = Form(...),
     job_description: str = Form(...),
@@ -624,7 +655,11 @@ async def generate_cover_letter(
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)
 ):
-    """Generate a cover letter based on resume and job description"""
+    """Generate a cover letter based on resume and job description
+    
+    ## Deprecated
+    Use `/api/resume/tailor-v3` instead.
+    """
     
     openrouter_key = os.getenv("OPENROUTER_API_KEY")
     if not openrouter_key:
@@ -733,12 +768,16 @@ Return ONLY the cover letter text, no formatting or markdown.
         raise HTTPException(status_code=500, detail=f"Cover letter generation failed: {str(e)}")
 
 
-@router.get("/resume/cover-letter/{filename}/download")
+@router.get("/resume/cover-letter/{filename}/download", dependencies=[Depends(deprecation_header)])
 async def download_cover_letter(
     filename: str,
     current_user: str = Depends(get_current_user)
 ):
-    """Download generated cover letter PDF"""
+    """Download generated cover letter PDF
+    
+    ## Deprecated
+    Use `/api/resume/tailor-v3` instead.
+    """
     
     if not filename.endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Invalid file")

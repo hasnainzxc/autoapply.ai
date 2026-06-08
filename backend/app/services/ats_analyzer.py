@@ -160,6 +160,7 @@ class ATSAnalyzer:
                         required_matches += 0.5
                         break
 
+        required_rate = 0
         if total_required > 0:
             required_rate = required_matches / total_required
             score += int(required_rate * 35)

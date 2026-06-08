@@ -249,8 +249,13 @@ export default function Home() {
   const containerRef = useRef<HTMLElement>(null);
   const [showFlow, setShowFlow] = useState(false);
 
-  // Don't auto-redirect - show landing page first
-  // User can navigate to dashboard manually or via navbar
+  const handleStartFlow = () => {
+    if (!user) {
+      router.push("/sign-in");
+      return;
+    }
+    router.push("/resumes");
+  };
 
   if (!isLoaded) {
     return (
@@ -269,7 +274,7 @@ export default function Home() {
       <GlobalWire containerRef={containerRef} />
       
       {/* Kinetic Hero */}
-      <KineticHero onStartFlow={() => setShowFlow(true)} />
+      <KineticHero onStartFlow={handleStartFlow} />
       
       {/* Features */}
       <FeaturesSection containerRef={containerRef} />
@@ -278,7 +283,7 @@ export default function Home() {
       <HowItWorksSection />
       
       {/* CTA */}
-      <CTASection onStartFlow={() => setShowFlow(true)} />
+      <CTASection onStartFlow={handleStartFlow} />
       
       {/* Footer */}
       <Footer />
