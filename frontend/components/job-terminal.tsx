@@ -3,22 +3,12 @@
 import { useState, useRef, useEffect } from "react";
 import { motion } from "framer-motion";
 import { Terminal, ChevronRight, Loader2, Sparkles, Link, FileText } from "lucide-react";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { apiPostForm } from "@/lib/api-client";
 
 interface JobTerminalProps {
   resumeId: string;
-  onAnalysisComplete: (data: AnalysisData, tailoredId: string) => void;
+  onAnalysisComplete: (tailoredResume: any, tailoredId: string) => void;
   onJobDescriptionChange: (desc: string) => void;
-}
-
-interface AnalysisData {
-  atsScore: number;
-  matchedSkills: string[];
-  missingSkills: string[];
-  suggestions: string[];
-  jobTitle: string;
-  company: string;
 }
 
 export function JobTerminal({ resumeId, onAnalysisComplete, onJobDescriptionChange }: JobTerminalProps) {
@@ -52,40 +42,18 @@ export function JobTerminal({ resumeId, onAnalysisComplete, onJobDescriptionChan
       formData.append("job_description", content);
       formData.append("template", "default");
 
-      const res = await fetch(`${API_URL}/api/resume/tailor`, {
-        method: "POST",
-        body: formData,
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        
-        const analysisData: AnalysisData = {
-          atsScore: data.ats_score_estimate || 75,
-          matchedSkills: data.structured_data?.key_skills?.slice(0, 8) || [],
-          missingSkills: data.structured_data?.missing_keywords || [],
-          suggestions: data.structured_data?.optimization_suggestions || [],
-          jobTitle: "Analyzed Position",
-          company: "Target Company",
-        };
-        
-        setMessages(prev => [...prev, { 
-          type: "system", 
-          content: `✅ Analysis complete! ATS Score: ${analysisData.atsScore}/100\n📊 Keywords matched: ${analysisData.matchedSkills.length} | Missing: ${analysisData.missingSkills.length}` 
-        }]);
-        
-        onAnalysisComplete(analysisData, data.tailored_resume_id);
-      } else {
-        const error = await res.json();
-        setMessages(prev => [...prev, { 
-          type: "system", 
-          content: `❌ Error: ${error.detail || "Analysis failed"}` 
-        }]);
-      }
-    } catch (error) {
+      const data = await apiPostForm<any>("/api/resume/tailor-v3", formData);
+      
       setMessages(prev => [...prev, { 
         type: "system", 
-        content: "❌ Connection error. Please try again." 
+        content: `✅ Analysis complete! ATS Score: ${data.match_score}/100\n📊 Keywords matched: ${data.ats_analysis?.matched_skills?.length || 0} | Missing: ${data.ats_analysis?.missing_skills?.length || 0}` 
+      }]);
+      
+      onAnalysisComplete(data.tailored_resume, data.tailored_resume_id);
+    } catch (error: any) {
+      setMessages(prev => [...prev, { 
+        type: "system", 
+        content: `❌ Error: ${error.detail || error.message || "Analysis failed"}` 
       }]);
     } finally {
       setIsAnalyzing(false);

@@ -44,20 +44,20 @@ class ModelConfig:
 LLM_MODELS = {
     ModelTier.CHEAP: ModelConfig(
         tier=ModelTier.CHEAP,
-        model_id=os.getenv("LLM_CHEAP_MODEL", "anthropic/claude-3-haiku"),
+        model_id=os.getenv("LLM_CHEAP_MODEL", "openrouter/free"),
         max_tokens=1024,
         temperature=0.3,
     ),
     ModelTier.STANDARD: ModelConfig(
         tier=ModelTier.STANDARD,
-        model_id=os.getenv("LLM_STANDARD_MODEL", "deepseek/deepseek-chat-v3"),
-        max_tokens=2048,
+        model_id=os.getenv("LLM_STANDARD_MODEL", "openrouter/free"),
+        max_tokens=1024,
         temperature=0.4,
     ),
     ModelTier.PREMIUM: ModelConfig(
         tier=ModelTier.PREMIUM,
-        model_id=os.getenv("LLM_PREMIUM_MODEL", "anthropic/claude-sonnet-4-5"),
-        max_tokens=4096,
+        model_id=os.getenv("LLM_PREMIUM_MODEL", "openrouter/free"),
+        max_tokens=1024,
         temperature=0.5,
     ),
 }
@@ -76,17 +76,211 @@ class LLMOrchestrator:
         if not self.api_key:
             raise ValueError("OPENROUTER_API_KEY is required")
 
+    @staticmethod
+    def normalize_unicode(text: str) -> str:
+        """Normalize unicode for ATS compatibility."""
+        import unicodedata
+
+        text = unicodedata.normalize("NFKC", text)
+        replacements = {
+            "\u201c": '"',
+            "\u201d": '"',
+            "\u2018": "'",
+            "\u2019": "'",
+            "\u2013": "-",
+            "\u2014": "--",
+            "\u2026": "...",
+            "\u00a0": " ",
+            "\u2022": "-",
+            "\u202f": " ",
+            "\u2000\u2009": " ",
+            "\u200a": " ",
+            "\u200b": "",
+            "\ufeff": "",
+            "\u00b7": "*",
+        }
+        for old, new in replacements.items():
+            text = text.replace(old, new)
+        return text
+
+    @staticmethod
+    def construct_profile_text(profile: dict) -> str:
+        """Construct a pseudo-resume text from profile data for the pipeline.
+
+        Profile dict format:
+        {
+            "full_name": str,
+            "email": str,
+            "phone": str,
+            "experience_years": int,
+            "current_role": str (optional),
+            "location": str (optional),
+            "skills": list[str] (optional),
+            "summary": str (optional)
+        }
+
+        Returns plain text parseable by step1_extract_structure as valid resume input.
+        """
+        parts = []
+        parts.append(f"Name: {profile.get('full_name', '')}")
+        if profile.get("email"):
+            parts.append(f"Email: {profile['email']}")
+        if profile.get("phone"):
+            parts.append(f"Phone: {profile['phone']}")
+        if profile.get("location"):
+            parts.append(f"Location: {profile['location']}")
+        if profile.get("current_role"):
+            parts.append(f"Current Role: {profile['current_role']}")
+        if profile.get("experience_years"):
+            parts.append(f"Years of Experience: {profile['experience_years']}")
+        if profile.get("summary"):
+            parts.append(f"\nSummary:\n{profile['summary']}")
+        if profile.get("skills"):
+            parts.append(f"\nSkills:\n{', '.join(profile['skills'])}")
+
+        return "\n".join(parts)
+
     async def _call_llm(
+        self,
+        messages: List[Dict[str, str]],
+        model_config: ModelConfig,
+        retry_count: int = 5,
+    ) -> str:
+        """Make API call to LLM (OpenRouter or Gemini) with retry logic"""
+        # Development mock mode — returns plausible JSON without API call
+        if os.getenv("LLM_MOCK_MODE") == "true":
+            return self._mock_response(messages)
+        
+        gemini_key = os.getenv("GEMINI_API_KEY")
+        
+        if gemini_key and (model_config.model_id.startswith("gemini") or model_config.model_id.startswith("google/")):
+            return await self._call_gemini(messages, model_config, gemini_key, retry_count)
+        return await self._call_openrouter(messages, model_config, retry_count)
+
+    def _mock_response(self, messages: List[Dict[str, str]]) -> str:
+        """Generate mock JSON responses for development/testing"""
+        sys_msg = next((m["content"] for m in messages if m["role"] == "system"), "")
+        user_msg = next((m["content"] for m in messages if m["role"] == "user"), "")
+        combined = (sys_msg + " " + user_msg).lower()
+        
+        if "extract" in combined and "structure" in combined:
+            return json.dumps({
+                "basics": {"name": "Jane Dev", "email": "jane@test.com", "phone": "+1234567890",
+                           "summary": "Experienced developer", "location": {"city": "Dubai"}},
+                "skills": [{"name": "Python", "keywords": ["Flask", "FastAPI"]}],
+                "work": [{"name": "Tech Co", "position": "Developer", "start_date": "2022-01",
+                          "highlights": ["Built web apps with Flask"]}],
+                "projects": [{"name": "Web App", "description": "Built with Flask and React"}],
+                "education": [{"institution": "University", "area": "CS", "study_type": "BS"}]
+            })
+        
+        if "analyze" in combined and "job" in combined:
+            return json.dumps({
+                "job_title": "Software Developer", "company_name": "Tech Corp",
+                "required_skills": ["Python", "Flask"], "preferred_skills": [],
+                "tools_and_technologies": ["Flask"], "experience_years_min": 2,
+                "education_level": "Bachelor's", "keywords": ["Python", "Flask"],
+                "ats_keywords": ["Python", "Flask"], "soft_skills": ["Teamwork"],
+                "responsibilities": ["Develop Flask apps"], "qualifications": ["Python exp"],
+                "is_weak_description": False, "weak_description_notes": []
+            })
+        
+        if "match score" in combined or "calculate" in combined and "match" in combined:
+            return json.dumps({
+                "overall_score": 78, "keyword_match_rate": 0.72, "experience_match": 75,
+                "education_match": 80, "matched_keywords": ["Python", "Flask"],
+                "missing_keywords": ["Docker"], "bonus_keywords": [],
+                "gap_analysis": {"skills_gap": "Missing Docker"},
+                "recommendations": ["Add Docker experience if applicable"]
+            })
+        
+        # Default: step4 tailor response
+        return json.dumps({
+            "basics": {"name": "Jane Dev", "email": "jane@test.com", "phone": "+1234567890",
+                       "summary": "Junior Python developer with Flask experience seeking new role.",
+                       "label": "Junior Developer", "location": {"city": "Dubai"}},
+            "skills": [{"name": "Programming", "keywords": ["Python", "Flask", "REST APIs"]}],
+            "work": [{"name": "Tech Startup", "position": "Junior Developer", "start_date": "2022-01",
+                      "highlights": ["Built REST APIs with Flask", "Worked in agile team of 5 developers"]}],
+            "projects": [{"name": "Task Manager API", "description": "RESTful Flask API with SQLAlchemy",
+                          "highlights": ["Designed RESTful endpoints", "Integrated PostgreSQL"]}],
+            "education": [{"institution": "Tech University", "area": "Computer Science", "study_type": "BSc"}]
+        })
+
+    async def _call_gemini(
+        self,
+        messages: List[Dict[str, str]],
+        model_config: ModelConfig,
+        api_key: str,
+        retry_count: int = 3,
+    ) -> str:
+        """Call Google Gemini API directly"""
+        import httpx
+        
+        # Convert chat messages to Gemini format
+        system_instruction = None
+        contents = []
+        for msg in messages:
+            if msg["role"] == "system":
+                system_instruction = {"parts": [{"text": msg["content"]}]}
+            else:
+                role = "user" if msg["role"] == "user" else "model"
+                contents.append({"role": role, "parts": [{"text": msg["content"]}]})
+        
+        body = {
+            "contents": contents,
+            "generationConfig": {
+                "temperature": model_config.temperature,
+                "maxOutputTokens": model_config.max_tokens,
+            },
+        }
+        if system_instruction:
+            body["systemInstruction"] = system_instruction
+        
+        # Map model ID to Gemini model name
+        model_id = model_config.model_id
+        if model_id == "openrouter/free" or model_id == "qwen/qwen3-coder:free":
+            model_id = "gemini-2.0-flash"
+        
+        url = f"https://generativelanguage.googleapis.com/v1beta/models/{model_id}:generateContent?key={api_key}"
+        
+        for attempt in range(retry_count):
+            try:
+                async with httpx.AsyncClient(timeout=180.0) as client:
+                    response = await client.post(url, json=body)
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        return result["candidates"][0]["content"]["parts"][0]["text"]
+                    
+                    elif response.status_code == 429:
+                        await self._wait_with_exponential_backoff(attempt)
+                        continue
+                    
+                    else:
+                        raise Exception(
+                            f"Gemini API error: {response.status_code} - {response.text}"
+                        )
+            
+            except Exception as e:
+                if attempt == retry_count - 1:
+                    raise Exception(f"Failed after {retry_count} attempts: {str(e)}")
+                await self._wait_with_exponential_backoff(attempt)
+        
+        raise Exception("Max retries exceeded")
+
+    async def _call_openrouter(
         self,
         messages: List[Dict[str, str]],
         model_config: ModelConfig,
         retry_count: int = 3,
     ) -> str:
         """Make API call to OpenRouter with retry logic"""
+        import httpx
 
         for attempt in range(retry_count):
             try:
-                async with httpx.AsyncClient(timeout=120.0) as client:
+                async with httpx.AsyncClient(timeout=180.0) as client:
                     response = await client.post(
                         self.base_url,
                         headers={
@@ -256,6 +450,7 @@ CRITICAL RULES:
 
         json_str = self._extract_json(response)
         data = json.loads(json_str)
+        data["raw_text"] = job_description
 
         return JobAnalysis(**data)
 
@@ -315,8 +510,45 @@ JOB ANALYSIS:
 
         return MatchScoreResult(**data)
 
+    def _estimate_experience_years(self, resume: ResumeSchema) -> float:
+        """Estimate total years of experience from work history dates."""
+        if not resume.work:
+            return 0.0
+        start_dates = []
+        end_dates = []
+        now = __import__("datetime").datetime.now()
+        current_year = now.year + now.month / 12.0
+        for job in resume.work:
+            if job.start_date:
+                try:
+                    parts = job.start_date.split("-")
+                    if len(parts) >= 1:
+                        year = int(parts[0])
+                        month = int(parts[1]) if len(parts) >= 2 else 1
+                        start_dates.append(year + month / 12.0)
+                except (ValueError, TypeError):
+                    pass
+            if job.end_date:
+                try:
+                    parts = job.end_date.split("-")
+                    if len(parts) >= 1:
+                        year = int(parts[0])
+                        month = int(parts[1]) if len(parts) >= 2 else 6
+                        end_dates.append(year + month / 12.0)
+                except (ValueError, TypeError):
+                    pass
+        if not start_dates:
+            return 0.0
+        earliest = min(start_dates)
+        latest = max(end_dates) if end_dates else current_year
+        return max(0.0, round(latest - earliest, 1))
+
     async def step4_tailor_resume(
-        self, resume: ResumeSchema, job: JobAnalysis, match_result: MatchScoreResult
+        self,
+        resume: ResumeSchema,
+        job: JobAnalysis,
+        match_result: MatchScoreResult,
+        experience_years_strategy: str = "default",
     ) -> TailoredResumeSchema:
         """
         Step 4: Tailor resume for the specific job.
@@ -325,6 +557,18 @@ JOB ANALYSIS:
         resume_text = self._resume_to_text(resume)
         job_text = self._job_to_text(job)
 
+        experience_note = ""
+        if experience_years_strategy == "dynamic" and job.experience_years_min:
+            candidate_years = self._estimate_experience_years(resume)
+            if candidate_years < job.experience_years_min:
+                experience_note = f"""
+EXPERIENCE GAP STRATEGY:
+The JD requires approximately {job.experience_years_min} years of experience. 
+Candidate has approximately {candidate_years} years. 
+Frame existing experience to demonstrate equivalent capability. 
+Focus on depth of achievements and impact rather than total years. 
+Do NOT misrepresent years of experience.
+"""
         system_prompt = """You are an expert resume writer who crafts ATS-optimized resumes that also impress human recruiters.
 
 YOUR CORE PRINCIPLES:
@@ -397,7 +641,7 @@ TARGET JOB:
 
 ATS MATCH ANALYSIS:
 {json.dumps(match_result.model_dump(), indent=2)}
-
+{experience_note}
 CRITICAL: 
 - Preserve ALL original skills exactly
 - Only enhance achievements if they can be quantified or strengthened
@@ -421,6 +665,8 @@ CRITICAL:
 
     def _extract_json(self, text: str) -> str:
         """Extract JSON from LLM response, handling markdown code blocks"""
+        if not text:
+            raise ValueError("Empty response from LLM")
         text = text.strip()
 
         if text.startswith("```json"):
@@ -548,7 +794,10 @@ CRITICAL:
         return "\n".join(parts)
 
     async def full_pipeline(
-        self, raw_resume_text: str, job_description: str
+        self,
+        raw_resume_text: str,
+        job_description: str,
+        experience_years_strategy: str = "default",
     ) -> tuple[TailoredResumeSchema, JobAnalysis, MatchScoreResult]:
         """
         Run the complete resume tailoring pipeline.
@@ -556,14 +805,18 @@ CRITICAL:
         """
         import asyncio
 
-        resume, job, match_result = await asyncio.gather(
+        raw_resume_text = self.normalize_unicode(raw_resume_text)
+        job_description = self.normalize_unicode(job_description)
+
+        resume, job = await asyncio.gather(
             self.step1_extract_structure(raw_resume_text),
             self.step2_analyze_job(job_description),
-            None,
         )
 
         match_result = await self.step3_calculate_match(resume, job)
 
-        tailored = await self.step4_tailor_resume(resume, job, match_result)
+        tailored = await self.step4_tailor_resume(
+            resume, job, match_result, experience_years_strategy
+        )
 
         return tailored, job, match_result

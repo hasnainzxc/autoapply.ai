@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import auth, users, jobs, applications, credits
 from app.api.routes import resumes
 from app.api.routes import resume_v2
+from app.api.routes import resume_v3
 from app.services.database import init_db
 import os
 from dotenv import load_dotenv
@@ -40,6 +41,7 @@ def create_app() -> FastAPI:
     app.include_router(credits.router, prefix="/api", tags=["credits"])
     app.include_router(resumes.router, prefix="/api", tags=["resumes"])
     app.include_router(resume_v2.router, prefix="/api", tags=["resume-v2"])
+    app.include_router(resume_v3.router, prefix="/api", tags=["resume-v3"])
 
     @app.get("/api/health")
     async def health_check():

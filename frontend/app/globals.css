@@ -192,6 +192,48 @@ h1, h2, h3, h4, h5, h6 {
   100% { background-position: 200% 0; }
 }
 
+/* ============================================================
+   Print Styles — Hide all chrome, show only resume preview
+   ============================================================ */
+@media print {
+  @page {
+    size: letter;
+    margin: 0.5in;
+  }
+  body {
+    background: white !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+  /* Hide everything except resume print area */
+  body > *:not(.resume-print-area),
+  .resume-print-area > *:not(.resume-preview-container) {
+    display: none !important;
+  }
+  .resume-print-area {
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 100% !important;
+    height: 100% !important;
+    display: block !important;
+    background: white !important;
+    z-index: 99999 !important;
+    overflow: visible !important;
+  }
+  .resume-preview-container {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+  }
+  /* Hide resume preview UI chrome */
+  .resume-toolbar,
+  .resume-template-selector,
+  .resume-no-print {
+    display: none !important;
+  }
+}
+
 @keyframes fade-up {
   from { 
     opacity: 0; 

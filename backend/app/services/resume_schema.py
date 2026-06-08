@@ -189,19 +189,19 @@ class TailoredResumeSchema(ResumeSchema):
 class JobAnalysis(BaseModel):
     """Structured job description analysis"""
 
-    raw_text: str
+    raw_text: Optional[str] = None
 
     required_skills: List[str] = Field(default_factory=list)
     preferred_skills: List[str] = Field(default_factory=list)
     tools_and_technologies: List[str] = Field(default_factory=list)
 
     job_title: str = ""
-    company_name: str = ""
+    company_name: Optional[str] = ""
     location: str = ""
     salary_range: str = ""
 
     experience_years_min: Optional[int] = None
-    education_level: str = ""
+    education_level: Optional[str] = ""
 
     keywords: List[str] = Field(default_factory=list)
 
