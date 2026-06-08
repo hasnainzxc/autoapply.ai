@@ -5,6 +5,28 @@
  *
  * Types are defined here as canonical source. Other modules import from here.
  */
+
+/** Convert snake_case keys from backend API to camelCase for frontend types. */
+export function normalizeResumeData(raw: Record<string, unknown>): TailoredResumeSchema {
+  if (!raw || typeof raw !== "object") return raw as TailoredResumeSchema;
+
+  const camel = (s: string) => s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+
+  function walk(obj: unknown): unknown {
+    if (Array.isArray(obj)) return obj.map(walk);
+    if (obj && typeof obj === "object") {
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(obj as Record<string, unknown>)) {
+        out[camel(k)] = walk(v);
+      }
+      return out;
+    }
+    return obj;
+  }
+
+  return walk(raw) as TailoredResumeSchema;
+}
+
 export interface Location {
   city?: string | null;
   countryCode?: string | null;
@@ -395,7 +417,6 @@ export function resumeToHtml(
       buildProjects(resume.projects),
       buildEducation(resume.education),
       buildCertificates(resume.certificates),
-      buildSkillsSection(resume.skills),
     ]
       .filter(Boolean)
       .join("\n");

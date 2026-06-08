@@ -20,7 +20,7 @@ class PDFGenerator:
 
     def __init__(self, output_dir: Optional[str] = None):
         self.output_dir = output_dir or os.getenv(
-            "UPLOAD_DIR", "/home/hairzee/prods/applymate/backend/uploads"
+            "UPLOAD_DIR", os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads")
         )
         os.makedirs(self.output_dir, exist_ok=True)
 

@@ -172,32 +172,56 @@ pip install -r requirements.txt
 # Create uploads directory
 mkdir -p uploads
 
-# Start backend
-PYTHONPATH=/home/hairzee/prods/applymate/backend python -m uvicorn app.main:app --host 0.0.0.0 --port 8000
+# Install frontend dependencies
+cd ../frontend
+npm install
+
+# Start backend (from project root)
+cd ../backend
+PYTHONPATH=$PWD python -m uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --reload
+
+# In another terminal, start frontend
+cd frontend
+npm run dev
 ```
 
-### 5. Test the API
+> **Note:** Backend uses `create_app` factory (not `app` directly). The `.env` in `backend/.env` is auto-loaded.
+
+### 5. Use Mock Mode (No API Key Required)
+
+For development without an LLM API key, the backend includes a mock mode:
+
+```bash
+# In backend/.env, ensure:
+LLM_MOCK_MODE=true
+
+# Mock mode generates realistic resume data with simulated ATS analysis.
+# No OPENROUTER_API_KEY needed. Default profile:
+# - Name: Muhammad Yousaf
+# - Phone: 03214417723
+# - Role: React Developer with 2yr experience
+```
+
+### 6. Test the API
 
 ```bash
 # Health check
 curl http://localhost:8000/api/health
 
-# Analyze a job
-curl -X POST http://localhost:8000/api/jobs/analyze \
-  -H "Content-Type: application/json" \
-  -d '{"job_url": "https://example.com/job", "job_title": "Software Engineer"}'
-
 # Upload a resume (PDF or DOCX)
 curl -X POST http://localhost:8000/api/resume/upload \
   -F "file=@/path/to/resume.pdf"
 
-# Tailor resume (requires OPENROUTER_API_KEY)
-curl -X POST http://localhost:8000/api/resume/tailor \
+# Tailor resume (V3 pipeline — returns structured JSON)
+curl -X POST http://localhost:8000/api/resume/tailor-v3 \
   -F "resume_id=<resume_id>" \
   -F "job_description=Python developer with FastAPI"
 
-# Download tailored PDF
-curl -X GET http://localhost:8000/api/resume/<tailored_resume_id>/download
+# Download tailored PDF (V3)
+curl -X GET http://localhost:8000/api/resume/v3/<tailored_resume_id>/download
+
+# Download as HTML instead
+curl -X GET "http://localhost:8000/api/resume/v3/<id>/download?format=html"
 ```
 
 ---
@@ -213,13 +237,21 @@ curl -X GET http://localhost:8000/api/resume/<tailored_resume_id>/download
 | GET | `/api/credits/balance` | Get credit balance |
 | GET | `/api/applications` | List user applications |
 
-### Resume Tailoring
+### Resume Tailoring (V3 — Current)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | POST | `/api/resume/upload` | Upload PDF/DOCX, extract text |
-| POST | `/api/resume/tailor` | Generate tailored resume via LLM |
-| GET | `/api/resume/{id}/download` | Download generated PDF |
-| GET | `/api/resume/events/{id}` | Get event logs for resume |
+| POST | `/api/resume/tailor-v3` | **V3 pipeline**: Full LLM orchestration, returns structured JSON + ATS analysis |
+| GET | `/api/resume/v3/{id}/download` | **V3 download**: PDF (or HTML with `?format=html`) from stored JSON |
+| GET | `/api/resume/{id}/json` | Retrieve stored V3 resume JSON |
+| DELETE | `/api/resumes/tailored/{id}` | Delete a tailored resume |
+
+### Resume Tailoring (V2 — Deprecated)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/resume/tailor` | Legacy V1 pipeline (deprecated) |
+| POST | `/api/resume/tailor-v2` | V2 pipeline (deprecated) |
+| GET | `/api/resume/{id}/download` | Legacy download (V2 only — returns 404 for V3) |
 
 ### User & Auth
 | Method | Endpoint | Description |

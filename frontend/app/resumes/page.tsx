@@ -12,6 +12,7 @@ import { ResumePreview } from "@/components/resume-preview";
 import { ProfileForm, type ProfileData } from "@/components/profile-form";
 import { apiGet, apiPostForm } from "@/lib/api-client";
 import type { TailoredResumeSchema } from "@/lib/resume-to-html";
+import { normalizeResumeData } from "@/lib/resume-to-html";
 import { 
   Upload, 
   FileText, 
@@ -359,9 +360,11 @@ export default function ResumesPage() {
   const [selectedTemplate, setSelectedTemplate] = useState("modern_tech");
   const [tailoringResult, setTailoringResult] = useState<TailoringResult | null>(null);
   const [tailoredResumeData, setTailoredResumeData] = useState<TailoredResumeSchema | null>(null);
+  const [currentTailoredId, setCurrentTailoredId] = useState<string | null>(null);
   const [inputMode, setInputMode] = useState<"upload" | "manual">("upload");
   const profileFormRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
   useEffect(() => {
     if (isLoaded && !user) router.push("/sign-in");
@@ -430,11 +433,22 @@ export default function ResumesPage() {
     } catch (error) { console.error("Delete failed", error); }
   };
 
+  const handleTailoredDelete = async (id: string) => {
+    const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    try {
+      const res = await fetch(`${apiUrl}/api/resumes/tailored/${id}`, { method: "DELETE" });
+      if (res.ok || res.status === 404) {
+        setTailoredResumes((prev) => prev.filter(r => r.id !== id));
+      }
+    } catch (error) { console.error("Delete tailored resume failed", error); }
+  };
+
   const handleSelectResume = (id: string) => {
     setSelectedResume(id);
     setLastUsedResume(id);
     setTailoringResult(null);
     setTailoredResumeData(null);
+    setCurrentTailoredId(null);
   };
 
   const simulateTailoringProgress = () => {
@@ -468,6 +482,7 @@ export default function ResumesPage() {
         missing_keywords: data.ats_analysis.missing_keywords,
         template_used: selectedTemplate
       }, ...prev]);
+      setCurrentTailoredId(data.tailored_resume_id);
       setTailoringResult({
         ats_score: data.ats_analysis.overall_score,
         matched_keywords: data.ats_analysis.matched_keywords,
@@ -475,7 +490,7 @@ export default function ResumesPage() {
         ats_breakdown: data.ats_analysis.breakdown,
         job_title: data.tailored_resume.basics?.name
       });
-      setTailoredResumeData(data.tailored_resume);
+      setTailoredResumeData(normalizeResumeData(data.tailored_resume as Record<string, unknown>));
       setJobDescription("");
     } catch (error) { console.error("Tailoring failed", error); }
     finally { 
@@ -508,6 +523,7 @@ export default function ResumesPage() {
         missing_keywords: data.ats_analysis.missing_keywords,
         template_used: selectedTemplate
       }, ...prev]);
+      setCurrentTailoredId(data.tailored_resume_id);
       setTailoringResult({
         ats_score: data.ats_analysis.overall_score,
         matched_keywords: data.ats_analysis.matched_keywords,
@@ -515,7 +531,7 @@ export default function ResumesPage() {
         ats_breakdown: data.ats_analysis.breakdown,
         job_title: data.tailored_resume.basics?.name
       });
-      setTailoredResumeData(data.tailored_resume);
+      setTailoredResumeData(normalizeResumeData(data.tailored_resume as Record<string, unknown>));
       setJobDescription("");
     } catch (error) { console.error("Tailoring failed", error); }
     finally {
@@ -569,7 +585,7 @@ export default function ResumesPage() {
             {/* Input Mode Toggle */}
             <div className="flex gap-2 p-1 bg-white/5 rounded-xl border border-white/10">
               <button
-                onClick={() => { setInputMode("upload"); setTailoringResult(null); setTailoredResumeData(null); }}
+                onClick={() => { setInputMode("upload"); setTailoringResult(null); setTailoredResumeData(null); setCurrentTailoredId(null); }}
                 className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-all duration-200 ${
                   inputMode === "upload"
                     ? "bg-[#FACC15] text-black shadow-lg"
@@ -582,7 +598,7 @@ export default function ResumesPage() {
                 </span>
               </button>
               <button
-                onClick={() => { setInputMode("manual"); setSelectedResume(null); setTailoringResult(null); setTailoredResumeData(null); }}
+                onClick={() => { setInputMode("manual"); setSelectedResume(null); setTailoringResult(null); setTailoredResumeData(null); setCurrentTailoredId(null); }}
                 className={`flex-1 py-2.5 px-4 rounded-lg text-sm font-medium transition-all duration-200 ${
                   inputMode === "manual"
                     ? "bg-[#FACC15] text-black shadow-lg"
@@ -774,8 +790,11 @@ export default function ResumesPage() {
                       </div>
                       <h2 className="text-lg font-semibold text-white">Tailored Resume Preview</h2>
                     </div>
-                    <div className="min-h-[500px]">
-                      <ResumePreview resumeData={tailoredResumeData} />
+                    <div className="h-[700px]">
+                      <ResumePreview 
+                        resumeData={tailoredResumeData} 
+                        pdfUrl={currentTailoredId ? `${API_URL}/api/resume/v3/${currentTailoredId}/download` : undefined}
+                      />
                     </div>
                   </GlassCard>
                 </motion.div>
@@ -859,14 +878,23 @@ export default function ResumesPage() {
                           </div>
                         </div>
                       </div>
-                      <Button 
-                        size="sm" 
-                        className="rounded-xl bg-green-500 text-black hover:bg-green-400 flex-shrink-0 text-xs sm:text-sm"
-                        onClick={() => downloadPDF(`/api/resume/${resume.id}/download`)}
-                      >
-                        <Download className="w-4 h-4 mr-1" />
-                        Download
-                      </Button>
+                      <div className="flex items-center gap-2">
+                        <Button 
+                          size="sm" 
+                          className="rounded-xl bg-red-500/20 text-red-400 hover:bg-red-500/30 flex-shrink-0"
+                          onClick={(e) => { e.stopPropagation(); handleTailoredDelete(resume.id); }}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          className="rounded-xl bg-green-500 text-black hover:bg-green-400 flex-shrink-0 text-xs sm:text-sm"
+                          onClick={() => downloadPDF(`/api/resume/v3/${resume.id}/download`)}
+                        >
+                          <Download className="w-4 h-4 mr-1" />
+                          Download
+                        </Button>
+                      </div>
                     </motion.div>
                   ))}
                 </div>
