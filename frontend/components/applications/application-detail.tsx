@@ -2,9 +2,10 @@
 
 import { motion, AnimatePresence } from "framer-motion";
 import { useEffect, useState } from "react";
-import { X, ExternalLink, Clock, FileText, Eye, Download } from "lucide-react";
+import { X, ExternalLink, Clock, FileText, Eye } from "lucide-react";
 import { StatusBadge } from "./status-badge";
 import { ReportViewer } from "./report-viewer";
+import { CVViewer } from "./cv-viewer";
 
 interface Application {
   id: string;
@@ -42,6 +43,7 @@ interface ApplicationDetailProps {
 export function ApplicationDetail({ application, onClose }: ApplicationDetailProps) {
   const [events, setEvents] = useState<Event[]>([]);
   const [showReport, setShowReport] = useState(false);
+  const [showCV, setShowCV] = useState(false);
 
   useEffect(() => {
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
@@ -172,15 +174,13 @@ export function ApplicationDetail({ application, onClose }: ApplicationDetailPro
             {/* Links */}
             <div className="flex gap-2">
               {(application.cv_file_path || application.cv_used) && (
-                <a
-                  href={`${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000"}/api/applications/${application.id}/cv`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  onClick={() => setShowCV(true)}
                   className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-[#06B6D4]/10 hover:bg-[#06B6D4]/20 text-[#06B6D4] text-sm font-medium transition-all border border-[#06B6D4]/20"
                 >
                   <Eye className="w-4 h-4" />
                   View CV
-                </a>
+                </button>
               )}
               {application.report_path && (
                 <button
@@ -235,6 +235,9 @@ export function ApplicationDetail({ application, onClose }: ApplicationDetailPro
 
       {showReport && (
         <ReportViewer applicationId={application.id} onClose={() => setShowReport(false)} />
+      )}
+      {showCV && (
+        <CVViewer applicationId={application.id} companyName={application.company_name} onClose={() => setShowCV(false)} />
       )}
     </AnimatePresence>
   );
