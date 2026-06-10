@@ -8,7 +8,7 @@ from pydantic import BaseModel
 from datetime import datetime
 import uuid
 
-_BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+_BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 router = APIRouter()
 
@@ -318,7 +318,7 @@ async def get_application_report(
     
     report_path = app.report_path
     if not os.path.isabs(report_path):
-        base = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+        base = _BACKEND_DIR
         report_path = os.path.join(base, report_path)
     
     try:
