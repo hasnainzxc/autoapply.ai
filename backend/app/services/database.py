@@ -85,6 +85,7 @@ class Application(Base):
     portal = Column(String(100))
     notes = Column(Text)
     cv_used = Column(Text)
+    cv_file_path = Column(Text)
     tailored_resume = Column(JSON)
     cover_letter = Column(Text)
     applied_at = Column(DateTime)

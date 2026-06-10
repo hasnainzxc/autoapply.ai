@@ -49,6 +49,7 @@ def serialize_application(app: Application) -> dict:
         "portal": app.portal,
         "notes": app.notes,
         "cv_used": app.cv_used,
+        "cv_file_path": app.cv_file_path,
         "tailored_resume": app.tailored_resume,
         "cover_letter": app.cover_letter,
         "applied_at": app.applied_at.isoformat() if app.applied_at else None,
@@ -122,6 +123,21 @@ async def import_application(
         with open(abs_path, "w", encoding="utf-8") as f:
             f.write(body["report_content"])
 
+    cv_file_path = body.get("cv_file_path")
+    if body.get("cv_content") and not cv_file_path:
+        uploads_dir = os.path.join(_BACKEND_DIR, "uploads")
+        os.makedirs(uploads_dir, exist_ok=True)
+        fname = f"cv-{body.get('company_name', 'unknown').lower().replace(' ', '-')}-{datetime.now().strftime('%Y-%m-%d')}.pdf"
+        cv_file_path = os.path.join("uploads", fname)
+        abs_path = os.path.join(uploads_dir, fname)
+        import base64
+        try:
+            data = base64.b64decode(body["cv_content"])
+            with open(abs_path, "wb") as f:
+                f.write(data)
+        except Exception:
+            pass
+
     app = Application(
         user_id=current_user,
         job_url=body.get("job_url", ""),
@@ -132,12 +148,13 @@ async def import_application(
         status=body.get("status", "applied").lower(),
         match_score=body.get("match_score"),
         score_rating=body.get("score_rating"),
-        has_pdf=body.get("has_pdf", False),
+        has_pdf=body.get("has_pdf", False) or bool(cv_file_path),
         report_path=report_path,
         report_number=report_number,
         portal=body.get("portal"),
         notes=body.get("notes", ""),
         cv_used=body.get("cv_used"),
+        cv_file_path=cv_file_path,
         applied_at=datetime.fromisoformat(body["applied_at"]) if body.get("applied_at") else None,
     )
     db.add(app)
@@ -310,6 +327,36 @@ async def get_application_report(
         return {"content": content, "path": app.report_path}
     except FileNotFoundError:
         raise HTTPException(status_code=404, detail="Report file not found")
+
+
+@router.get("/applications/{application_id}/cv")
+async def get_application_cv(
+    application_id: str,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user)
+):
+    """Serve the CV PDF file for an application"""
+    from fastapi.responses import FileResponse
+
+    app = db.query(Application).filter(
+        Application.id == application_id,
+        Application.user_id == current_user
+    ).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    cv_path = app.cv_file_path or app.cv_used
+    if not cv_path:
+        raise HTTPException(status_code=404, detail="No CV file associated")
+
+    # Try absolute path first, then relative to backend directory
+    if not os.path.isabs(cv_path):
+        cv_path = os.path.join(_BACKEND_DIR, cv_path)
+
+    if not os.path.exists(cv_path):
+        raise HTTPException(status_code=404, detail="CV file not found on disk")
+
+    return FileResponse(cv_path, media_type="application/pdf", filename=os.path.basename(cv_path))
 
 
 @router.delete("/applications/{application_id}")

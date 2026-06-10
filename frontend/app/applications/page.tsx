@@ -27,6 +27,7 @@ interface Application {
   portal: string;
   notes: string;
   cv_used: string;
+  cv_file_path: string;
   job_url: string;
   applied_at: string;
   created_at: string;
