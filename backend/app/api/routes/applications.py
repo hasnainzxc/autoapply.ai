@@ -335,8 +335,9 @@ async def get_application_cv(
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)
 ):
-    """Serve the CV PDF file for an application"""
+    """Serve the CV PDF file inline for an application"""
     from fastapi.responses import FileResponse
+    from fastapi import Response
 
     app = db.query(Application).filter(
         Application.id == application_id,
@@ -349,14 +350,14 @@ async def get_application_cv(
     if not cv_path:
         raise HTTPException(status_code=404, detail="No CV file associated")
 
-    # Try absolute path first, then relative to backend directory
     if not os.path.isabs(cv_path):
         cv_path = os.path.join(_BACKEND_DIR, cv_path)
 
     if not os.path.exists(cv_path):
         raise HTTPException(status_code=404, detail="CV file not found on disk")
 
-    return FileResponse(cv_path, media_type="application/pdf", filename=os.path.basename(cv_path))
+    headers = {"Content-Disposition": f'inline; filename="{os.path.basename(cv_path)}"'}
+    return FileResponse(cv_path, media_type="application/pdf", headers=headers)
 
 
 @router.delete("/applications/{application_id}")

@@ -66,8 +66,10 @@ export function ApplicationDetail({ application, onClose }: ApplicationDetailPro
   }
 
   return (
+    <>
     <AnimatePresence>
       <motion.div
+        key="slideover"
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
@@ -232,13 +234,14 @@ export function ApplicationDetail({ application, onClose }: ApplicationDetailPro
           </div>
         </motion.div>
       </motion.div>
-
-      {showReport && (
-        <ReportViewer applicationId={application.id} onClose={() => setShowReport(false)} />
-      )}
-      {showCV && (
-        <CVViewer applicationId={application.id} companyName={application.company_name} onClose={() => setShowCV(false)} />
-      )}
     </AnimatePresence>
+
+    {showReport && (
+      <ReportViewer applicationId={application.id} onClose={() => setShowReport(false)} />
+    )}
+    {showCV && (
+      <CVViewer applicationId={application.id} companyName={application.company_name} onClose={() => setShowCV(false)} />
+    )}
+    </>
   );
 }
