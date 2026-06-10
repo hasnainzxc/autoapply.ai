@@ -494,15 +494,10 @@ async def download_tailored_resume_v3(
       format=pdf  → returns PDF file
       format=html → returns HTML page (for browser preview)
     """
-    try:
-        resume_uuid = uuid.UUID(tailored_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid ID")
-
     tailored = (
         db.query(TailoredResume)
         .filter(
-            TailoredResume.id == resume_uuid,
+            TailoredResume.id == tailored_id,
             TailoredResume.user_id == current_user,
         )
         .first()

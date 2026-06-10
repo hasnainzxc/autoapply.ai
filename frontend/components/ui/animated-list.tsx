@@ -50,12 +50,12 @@ export function AnimatedListItem({
 interface ApplicationItemProps {
   title: string;
   company: string;
-  status: "queued" | "analyzing" | "applying" | "applied" | "failed";
+  status: string;
   matchScore?: number;
   timestamp?: string;
 }
 
-const statusColors = {
+const statusColors: Record<string, string> = {
   queued: "bg-[#6B6B6B]",
   analyzing: "bg-[#F59E0B]",
   applying: "bg-[#FACC15]",
@@ -63,7 +63,7 @@ const statusColors = {
   failed: "bg-[#EF4444]",
 };
 
-const statusLabels = {
+const statusLabels: Record<string, string> = {
   queued: "Queued",
   analyzing: "Analyzing",
   applying: "Applying",

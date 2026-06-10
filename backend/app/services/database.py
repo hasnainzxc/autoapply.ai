@@ -1,5 +1,4 @@
-from sqlalchemy import create_engine, Column, String, Integer, Text, DateTime, JSON
-from sqlalchemy.dialects.postgresql import UUID, JSONB
+from sqlalchemy import create_engine, Column, String, Integer, Text, DateTime, JSON, Boolean
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
@@ -9,12 +8,15 @@ import os
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL or (DATABASE_URL.startswith("${{") or DATABASE_URL.startswith("{{")):
-    raise ValueError("DATABASE_URL is not set. Please configure DATABASE_URL in Railway variables.")
+    DATABASE_URL = "sqlite:///./applymate.db"
 
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-engine = create_engine(DATABASE_URL, pool_pre_ping=True)
+is_sqlite = DATABASE_URL.startswith("sqlite")
+connect_args = {"check_same_thread": False} if is_sqlite else {}
+
+engine = create_engine(DATABASE_URL, connect_args=connect_args, pool_pre_ping=not is_sqlite)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -29,8 +31,8 @@ def get_db():
 
 class Profile(Base):
     __tablename__ = "profiles"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     clerk_id = Column(String(255), unique=True)
     email = Column(String(255))
     full_name = Column(String(255))
@@ -41,8 +43,8 @@ class Profile(Base):
 
 class Credit(Base):
     __tablename__ = "credits"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String(255), unique=True)
     balance = Column(Integer, default=0)
     lifetime_used = Column(Integer, default=0)
@@ -52,8 +54,8 @@ class Credit(Base):
 
 class CreditTransaction(Base):
     __tablename__ = "credit_transactions"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String(255))
     amount = Column(Integer)
     type = Column(String(50))
@@ -63,8 +65,8 @@ class CreditTransaction(Base):
 
 class Application(Base):
     __tablename__ = "applications"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String(255))
     job_url = Column(Text)
     job_title = Column(String(255))
@@ -74,6 +76,13 @@ class Application(Base):
     salary_range = Column(String(100))
     status = Column(String(50), default="queued")
     match_score = Column(Integer)
+    score_rating = Column(String(10))
+    has_pdf = Column(Boolean, default=False)
+    report_path = Column(Text)
+    report_number = Column(String(10))
+    portal = Column(String(100))
+    notes = Column(Text)
+    cv_used = Column(Text)
     tailored_resume = Column(JSON)
     cover_letter = Column(Text)
     applied_at = Column(DateTime)
@@ -85,19 +94,19 @@ class Application(Base):
 
 class ApplicationEvent(Base):
     __tablename__ = "application_events"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    application_id = Column(UUID(as_uuid=True))
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    application_id = Column(String(36))
     event_type = Column(String(50))
     message = Column(Text)
-    payload = Column(JSONB)
+    payload = Column(JSON)
     created_at = Column(DateTime, default=datetime.utcnow)
 
 
 class Resume(Base):
     __tablename__ = "resumes"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String(255))
     original_file_path = Column(Text)
     extracted_text = Column(Text)
@@ -107,10 +116,10 @@ class Resume(Base):
 
 class TailoredResume(Base):
     __tablename__ = "tailored_resumes"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
     user_id = Column(String(255))
-    resume_id = Column(UUID(as_uuid=True))
+    resume_id = Column(String(36))
     job_description = Column(Text)
     llm_model = Column(String(100))
     llm_raw_response = Column(Text)
@@ -123,13 +132,42 @@ class TailoredResume(Base):
 
 class ResumeEvent(Base):
     __tablename__ = "resume_events"
-    
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    tailored_resume_id = Column(UUID(as_uuid=True))
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    tailored_resume_id = Column(String(36))
     event_type = Column(String(50))
     message = Column(Text)
-    payload = Column(JSONB)
+    payload = Column(JSON)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class ScanHistory(Base):
+    __tablename__ = "scan_history"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(255))
+    job_url = Column(Text)
+    title = Column(String(255))
+    company = Column(String(255))
+    location = Column(String(255))
+    portal = Column(String(100))
+    status = Column(String(50), default="pending")
+    first_seen = Column(DateTime, default=datetime.utcnow)
+    last_seen = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class PipelineEntry(Base):
+    __tablename__ = "pipeline_entries"
+
+    id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(255))
+    job_url = Column(Text)
+    title = Column(String(255))
+    company = Column(String(255))
+    section = Column(String(50), default="pending")
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 def init_db():

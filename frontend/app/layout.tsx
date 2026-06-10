@@ -4,7 +4,14 @@ import "./globals.css";
 export const metadata = {
   title: "ApplyMate - AI Job Application Automation",
   description: "Automate your job search with AI-powered resume tailoring and applications",
-  viewport: "width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover, user-scalable=no",
+};
+
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: "cover",
+  userScalable: false,
 };
 
 export default function RootLayout({
