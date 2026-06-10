@@ -5,10 +5,12 @@ from datetime import datetime
 import uuid
 import os
 
+_BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL or (DATABASE_URL.startswith("${{") or DATABASE_URL.startswith("{{")):
-    DATABASE_URL = "sqlite:///./applymate.db"
+    DATABASE_URL = f"sqlite:///{os.path.join(_BACKEND_DIR, 'applymate.db').replace(os.sep, '/')}"
 
 if DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
