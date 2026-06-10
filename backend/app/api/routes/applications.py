@@ -8,6 +8,8 @@ from pydantic import BaseModel
 from datetime import datetime
 import uuid
 
+_BACKEND_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 router = APIRouter()
 
 
@@ -100,7 +102,26 @@ async def import_application(
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)
 ):
-    """Import a single application from career-ops tracker data"""
+    """Import an application from career-ops tracker data.
+
+    Accepts optional report_content (markdown) to save as a report file,
+    and optional events array to add to the application timeline.
+    """
+    reports_dir = os.path.join(_BACKEND_DIR, "reports")
+    os.makedirs(reports_dir, exist_ok=True)
+
+    report_number = body.get("report_number")
+    report_path = body.get("report_path")
+
+    if body.get("report_content") and not report_path:
+        company_slug = body.get("company_name", body.get("company", "unknown")).lower().replace(" ", "-")
+        report_number = report_number or str(len(os.listdir(reports_dir)) + 1).zfill(3)
+        fname = f"{report_number}-{company_slug}-{datetime.now().strftime('%Y-%m-%d')}.md"
+        report_path = os.path.join("reports", fname)
+        abs_path = os.path.join(reports_dir, fname)
+        with open(abs_path, "w", encoding="utf-8") as f:
+            f.write(body["report_content"])
+
     app = Application(
         user_id=current_user,
         job_url=body.get("job_url", ""),
@@ -112,8 +133,8 @@ async def import_application(
         match_score=body.get("match_score"),
         score_rating=body.get("score_rating"),
         has_pdf=body.get("has_pdf", False),
-        report_path=body.get("report_path"),
-        report_number=body.get("report_number"),
+        report_path=report_path,
+        report_number=report_number,
         portal=body.get("portal"),
         notes=body.get("notes", ""),
         cv_used=body.get("cv_used"),
@@ -123,15 +144,23 @@ async def import_application(
     db.commit()
     db.refresh(app)
 
-    event = ApplicationEvent(
+    db.add(ApplicationEvent(
         application_id=app.id,
         event_type="imported",
-        message=f"Imported from career-ops tracker",
+        message="Imported from career-ops tracker",
         payload={"source": "career-ops"}
-    )
-    db.add(event)
-    db.commit()
+    ))
 
+    for ev in body.get("events", []):
+        db.add(ApplicationEvent(
+            application_id=app.id,
+            event_type=ev.get("event_type", "note"),
+            message=ev.get("message", ""),
+            payload=ev.get("payload"),
+            created_at=datetime.fromisoformat(ev["created_at"]) if ev.get("created_at") else None,
+        ))
+
+    db.commit()
     return serialize_application(app)
 
 
@@ -217,6 +246,39 @@ async def get_application_events(
         }
         for e in events
     ]
+
+
+@router.post("/applications/{application_id}/events")
+async def add_application_event(
+    application_id: str,
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user)
+):
+    """Add an event to the application timeline"""
+    app = db.query(Application).filter(
+        Application.id == application_id,
+        Application.user_id == current_user
+    ).first()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    event = ApplicationEvent(
+        application_id=app.id,
+        event_type=body.get("event_type", "note"),
+        message=body.get("message", ""),
+        payload=body.get("payload"),
+        created_at=datetime.fromisoformat(body["created_at"]) if body.get("created_at") else None,
+    )
+    db.add(event)
+    db.commit()
+    db.refresh(event)
+    return {
+        "id": str(event.id),
+        "event_type": event.event_type,
+        "message": event.message,
+        "payload": event.payload,
+        "created_at": event.created_at.isoformat() if event.created_at else None,
+    }
 
 
 @router.get("/applications/{application_id}/report")
@@ -317,6 +379,42 @@ async def list_scan_history(
     ]
 
 
+@router.post("/scan-history")
+async def add_scan_history(
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user)
+):
+    """Add a scan history entry (dedup by job_url)"""
+    existing = db.query(ScanHistory).filter(
+        ScanHistory.job_url == body.get("job_url", ""),
+        ScanHistory.user_id == current_user
+    ).first()
+    if existing:
+        existing.last_seen = datetime.utcnow()
+        existing.title = body.get("title", existing.title)
+        existing.company = body.get("company", existing.company)
+        existing.status = body.get("status", existing.status)
+        db.commit()
+        db.refresh(existing)
+        return {"id": str(existing.id), "updated": True}
+    entry = ScanHistory(
+        user_id=current_user,
+        job_url=body.get("job_url", ""),
+        title=body.get("title", ""),
+        company=body.get("company", ""),
+        location=body.get("location", ""),
+        portal=body.get("portal", ""),
+        status=body.get("status", "new"),
+        first_seen=datetime.fromisoformat(body["first_seen"]) if body.get("first_seen") else datetime.utcnow(),
+        last_seen=datetime.utcnow(),
+    )
+    db.add(entry)
+    db.commit()
+    db.refresh(entry)
+    return {"id": str(entry.id), "updated": False}
+
+
 @router.get("/pipeline")
 async def list_pipeline(
     db: Session = Depends(get_db),
@@ -364,3 +462,27 @@ async def add_pipeline_entry(
         "company": entry.company,
         "section": entry.section,
     }
+
+
+@router.patch("/pipeline/{entry_id}")
+async def update_pipeline_entry(
+    entry_id: str,
+    body: dict,
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user)
+):
+    """Move a pipeline entry to another section"""
+    entry = db.query(PipelineEntry).filter(
+        PipelineEntry.id == entry_id,
+        PipelineEntry.user_id == current_user
+    ).first()
+    if not entry:
+        raise HTTPException(status_code=404, detail="Pipeline entry not found")
+    if "section" in body:
+        entry.section = body["section"]
+    if "title" in body:
+        entry.title = body["title"]
+    if "company" in body:
+        entry.company = body["company"]
+    db.commit()
+    return {"id": str(entry.id), "section": entry.section}
