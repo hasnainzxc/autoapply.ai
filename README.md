@@ -1,298 +1,337 @@
 # ApplyMate
 
-AI-powered job application automation platform that streamlines your job search with intelligent resume tailoring, cover letter generation, and automated applications.
+AI-powered job application automation platform. Tailors resumes, generates cover letters, tracks applications.
 
 ![Next.js](https://img.shields.io/badge/Next.js-15-black)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009974)
 ![License](https://img.shields.io/badge/License-MIT-blue)
-
-## Features
-
-- **Smart Resume Tailoring** - AI analyzes job descriptions and optimizes your resume for maximum match scores
-- **Cover Letter Generator** - Personalized cover letters written in your voice
-- **Auto-Apply** - Automated form filling and job application submission
-- **Application Tracking** - Dashboard to track all your applications and their status
-- **Template Selection** - Choose from professional resume templates (Tech, Creative, Business, General)
 
 ## Tech Stack
 
 | Component | Technology |
 |-----------|------------|
 | Frontend | Next.js 15, React 18, Tailwind CSS |
-| Authentication | Clerk |
-| Backend | FastAPI (Python) |
-| Database | PostgreSQL (Supabase or local Docker) |
+| Auth | Clerk |
+| Backend | FastAPI (Python 3.14) |
+| Database | PostgreSQL 16 (Docker) |
 | Task Queue | Redis + Celery |
-| AI/LLM | OpenRouter |
-| Browser Automation | Playwright |
-| PDF Generation | WeasyPrint |
+| AI/LLM | OpenRouter / Gemini |
+| PDF | WeasyPrint |
 
 ---
 
-## 🚀 Quick Start (Local Development)
+## 🚀 Quick Start
 
 ### 1. Start Infrastructure (Docker)
 
-```bash
-# Redis (for task queue)
-docker run -d --name applymate-redis -p 6379:6379 redis:alpine
+Containers already exist. Just start them:
 
-# PostgreSQL (database)
-docker run -d --name applymate-db \
+```bash
+docker start applymate-pg   # PostgreSQL on :5432
+docker start applymate-redis # Redis on :6379
+```
+
+**First time?** Create containers:
+
+```bash
+# PostgreSQL
+docker run -d --name applymate-pg \
   -e POSTGRES_PASSWORD=postgres \
   -e POSTGRES_DB=applymate \
-  -p 5432:5432 postgres:alpine
+  -p 5432:5432 postgres:16-alpine
+
+# Redis
+docker run -d --name applymate-redis \
+  -p 6379:6379 redis:7-alpine
 ```
 
-### 2. Initialize Database Tables
+DB tables auto-create on backend startup via SQLAlchemy. No manual SQL needed.
+
+### 2. Configure Environment
 
 ```bash
-docker exec applymate-db psql -U postgres -d applymate -c "
-CREATE EXTENSION IF NOT EXISTS 'uuid-ossp';
-
--- Core tables
-CREATE TABLE IF NOT EXISTS profiles (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    clerk_id VARCHAR(255) UNIQUE,
-    email VARCHAR(255),
-    full_name VARCHAR(255),
-    base_resume TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS credits (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id VARCHAR(255) UNIQUE,
-    balance INTEGER DEFAULT 0,
-    lifetime_used INTEGER DEFAULT 0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS credit_transactions (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id VARCHAR(255),
-    amount INTEGER,
-    type VARCHAR(50),
-    description TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS applications (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id VARCHAR(255),
-    job_url TEXT,
-    job_title VARCHAR(255),
-    company_name VARCHAR(255),
-    company_logo TEXT,
-    location VARCHAR(255),
-    salary_range VARCHAR(100),
-    status VARCHAR(50) DEFAULT 'queued',
-    match_score INTEGER,
-    tailored_resume JSONB,
-    cover_letter TEXT,
-    applied_at TIMESTAMP WITH TIME ZONE,
-    error_message TEXT,
-    retry_count INTEGER DEFAULT 0,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS application_events (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    application_id UUID REFERENCES applications(id) ON DELETE CASCADE,
-    event_type TEXT NOT NULL,
-    message TEXT,
-    payload JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
--- Resume tailoring tables
-CREATE TABLE IF NOT EXISTS resumes (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id VARCHAR(255),
-    original_file_path TEXT,
-    extracted_text TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS tailored_resumes (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    user_id VARCHAR(255),
-    resume_id UUID,
-    job_description TEXT,
-    llm_model TEXT,
-    llm_raw_response TEXT,
-    llm_structured_json JSONB,
-    template_used TEXT,
-    pdf_path TEXT,
-    status TEXT DEFAULT 'processing',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE TABLE IF NOT EXISTS resume_events (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    tailored_resume_id UUID,
-    event_type TEXT NOT NULL,
-    message TEXT,
-    payload JSONB,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-"
+cp backend/.env.example backend/.env  # then edit
 ```
 
-### 3. Configure Environment
+Key vars in `backend/.env`:
 
-Create `backend/.env`:
 ```env
-# Database (local PostgreSQL)
 DATABASE_URL=postgresql://postgres:postgres@localhost:5432/applymate
-
-# LLM (required for resume tailoring)
-OPENROUTER_API_KEY=your_openrouter_key_here
-
-# Auth (optional for local dev - uses fallback)
-CLERK_SECRET_KEY=sk_test_xxx
-CLERK_JWT_KEY=your_jwt_secret
-
-# Task Queue
-CELERY_BROKER_URL=redis://localhost:6379/0
-CELERY_RESULT_BACKEND=redis://localhost:6379/1
+LLM_MOCK_MODE=true                    # dev mode, no API key needed
+OPENROUTER_API_KEY=sk-or-...          # prod: real LLM key
 ```
 
-### 4. Install Dependencies & Run
+### 3. Run Backend
 
 ```bash
-# Install Python dependencies
 cd backend
 pip install -r requirements.txt
-
-# Create uploads directory
 mkdir -p uploads
 
-# Install frontend dependencies
-cd ../frontend
-npm install
+uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+```
 
-# Start backend (from project root)
-cd ../backend
-PYTHONPATH=$PWD python -m uvicorn app.main:create_app --factory --host 0.0.0.0 --port 8000 --reload
+Backend starts at **http://localhost:8000**
 
-# In another terminal, start frontend
+### 4. Run Frontend
+
+```bash
 cd frontend
+npm install
 npm run dev
 ```
 
-> **Note:** Backend uses `create_app` factory (not `app` directly). The `.env` in `backend/.env` is auto-loaded.
-
-### 5. Use Mock Mode (No API Key Required)
-
-For development without an LLM API key, the backend includes a mock mode:
-
-```bash
-# In backend/.env, ensure:
-LLM_MOCK_MODE=true
-
-# Mock mode generates realistic resume data with simulated ATS analysis.
-# No OPENROUTER_API_KEY needed. Default profile:
-# - Name: Muhammad Yousaf
-# - Phone: 03214417723
-# - Role: React Developer with 2yr experience
-```
-
-### 6. Test the API
-
-```bash
-# Health check
-curl http://localhost:8000/api/health
-
-# Upload a resume (PDF or DOCX)
-curl -X POST http://localhost:8000/api/resume/upload \
-  -F "file=@/path/to/resume.pdf"
-
-# Tailor resume (V3 pipeline — returns structured JSON)
-curl -X POST http://localhost:8000/api/resume/tailor-v3 \
-  -F "resume_id=<resume_id>" \
-  -F "job_description=Python developer with FastAPI"
-
-# Download tailored PDF (V3)
-curl -X GET http://localhost:8000/api/resume/v3/<tailored_resume_id>/download
-
-# Download as HTML instead
-curl -X GET "http://localhost:8000/api/resume/v3/<id>/download?format=html"
-```
+Frontend starts at **http://localhost:3000**
 
 ---
 
-## 📋 API Endpoints
+## 📖 API Docs
 
-### Core
-| Method | Endpoint | Description |
-|--------|----------|-------------|
+| URL | Description |
+|-----|-------------|
+| http://localhost:8000/docs | Swagger UI (interactive) |
+| http://localhost:8000/redoc | ReDoc UI |
+| http://localhost:8000/openapi.json | OpenAPI schema |
+
+---
+
+## 📋 Full API Routes
+
+### Health
+
+| Method | Path | Description |
+|--------|------|-------------|
 | GET | `/api/health` | Health check |
-| POST | `/api/jobs/analyze` | Analyze job URL, returns match score |
-| POST | `/api/jobs/apply` | Queue job application |
-| GET | `/api/credits/balance` | Get credit balance |
-| GET | `/api/applications` | List user applications |
 
-### Resume Tailoring (V3 — Current)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/resume/upload` | Upload PDF/DOCX, extract text |
-| POST | `/api/resume/tailor-v3` | **V3 pipeline**: Full LLM orchestration, returns structured JSON + ATS analysis |
-| GET | `/api/resume/v3/{id}/download` | **V3 download**: PDF (or HTML with `?format=html`) from stored JSON |
-| GET | `/api/resume/{id}/json` | Retrieve stored V3 resume JSON |
-| DELETE | `/api/resumes/tailored/{id}` | Delete a tailored resume |
+### Auth & Users
 
-### Resume Tailoring (V2 — Deprecated)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/resume/tailor` | Legacy V1 pipeline (deprecated) |
-| POST | `/api/resume/tailor-v2` | V2 pipeline (deprecated) |
-| GET | `/api/resume/{id}/download` | Legacy download (V2 only — returns 404 for V3) |
-
-### User & Auth
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/api/users/me` | Get user profile |
+| Method | Path | Description |
+|--------|------|-------------|
 | POST | `/api/webhooks/clerk` | Clerk webhook handler |
+| GET | `/api/users/me` | Get profile |
+| PUT | `/api/users/me` | Update profile |
+
+### Applications (Tracking)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/applications` | List user apps |
+| GET | `/api/applications/stats` | Aggregated stats |
+| GET | `/api/applications/{id}` | App detail |
+| PATCH | `/api/applications/{id}` | Update status |
+| DELETE | `/api/applications/{id}` | Delete app |
+| GET | `/api/applications/{id}/events` | Timeline events |
+| POST | `/api/applications/{id}/events` | Add event |
+| POST | `/api/applications/import` | **Import from external agent** |
+| GET | `/api/applications/{id}/report` | Get report markdown |
+| GET | `/api/applications/{id}/cv` | Get CV PDF |
+
+### Scan History & Pipeline
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/scan-history` | List scanned jobs |
+| POST | `/api/scan-history` | Add scan entry |
+| GET | `/api/pipeline` | List pipeline entries |
+| POST | `/api/pipeline` | Add pipeline entry |
+| PATCH | `/api/pipeline/{id}` | Update pipeline entry |
+
+### Resume Tailoring (V3 - Current)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/resume/upload` | Upload PDF/DOCX |
+| POST | `/api/resume/tailor-v3` | Full LLM pipeline |
+| GET | `/api/resume/v3/{id}/download` | Download PDF |
+| GET | `/api/resume/{id}/json` | Resume JSON |
+| GET | `/api/resume/templates` | List templates |
+| DELETE | `/api/resumes/tailored/{id}` | Delete tailored |
+
+### Credits
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET | `/api/credits/balance` | Get balance |
+| POST | `/api/credits/purchase` | Purchase credits |
+
+### Jobs
+
+| Method | Path | Description |
+|--------|------|-------------|
+| POST | `/api/jobs/analyze` | Analyze job URL |
+| POST | `/api/jobs/apply` | Queue application |
 
 ---
 
-## 🔧 Working with Docker
+## 🤖 External Agent Integration (Career-Ops)
 
-### Start containers
+Your career-ops agents can push data directly via API. **No DB access needed.**
+
+### Import Endpoint
+
 ```bash
-docker start applymate-redis applymate-db
+POST http://localhost:8000/api/applications/import
 ```
 
-### Stop containers
-```bash
-docker stop applymate-redis applymate-db
+Payload example:
+
+```json
+{
+  "job_title": "Senior AI Engineer",
+  "company_name": "Acme Corp",
+  "job_url": "https://jobs.ashbyhq.com/acme/123",
+  "location": "Dubai, UAE",
+  "salary_range": "200K-250K AED",
+  "status": "applied",
+  "match_score": 86,
+  "score_rating": "4.3/5",
+  "has_pdf": true,
+  "report_path": "reports/001-acme-2026-06-14.md",
+  "report_number": "001",
+  "portal": "Greenhouse",
+  "notes": "Custom CV uploaded, cover letter typed",
+  "cv_used": "cv-acme-2026-06-14.pdf",
+  "cv_file_path": "uploads/cv-acme-2026-06-14.pdf",
+  "applied_at": "2026-06-14T10:30:00",
+  "report_content": "# Report\n\nFull markdown report content...",
+  "cv_content": "<base64-encoded-pdf>",
+  "events": [
+    { "event_type": "submitted", "message": "Application submitted via Greenhouse" },
+    { "event_type": "followup", "message": "Follow-up email sent to hiring@acme.com" }
+  ]
+}
 ```
 
-### View logs
+### Scan History Endpoint
+
 ```bash
-docker logs applymate-db
+POST http://localhost:8000/api/scan-history
+
+{
+  "job_url": "https://job-boards.greenhouse.io/acme/jobs/123",
+  "title": "Senior AI Engineer",
+  "company": "Acme Corp",
+  "location": "Dubai",
+  "portal": "Greenhouse API",
+  "status": "added",
+  "first_seen": "2026-06-14"
+}
+```
+
+### Pipeline Endpoint
+
+```bash
+POST http://localhost:8000/api/pipeline
+
+{
+  "job_url": "https://jobs.ashbyhq.com/acme/456",
+  "title": "Forward Deployed Engineer",
+  "company": "Acme Corp",
+  "section": "pending"
+}
+```
+
+```bash
+PATCH http://localhost:8000/api/pipeline/{entry_id}
+
+{
+  "section": "evaluated"
+}
+```
+
+### Event Tracking
+
+```bash
+POST http://localhost:8000/api/applications/{app_id}/events
+
+{
+  "event_type": "followup",
+  "message": "2nd follow-up sent to hiring manager",
+  "payload": {
+    "channel": "email",
+    "contact": "john@acme.com"
+  }
+}
+```
+
+---
+
+## 🐳 Docker Reference
+
+### Start/Stop
+```bash
+docker start applymate-pg applymate-redis
+docker stop applymate-pg applymate-redis
+```
+
+### Check status
+```bash
+docker ps -a | grep applymate
+```
+
+### Logs
+```bash
+docker logs applymate-pg
 docker logs applymate-redis
 ```
 
-### Access PostgreSQL directly
+### PostgreSQL shell
 ```bash
-docker exec -it applymate-db psql -U postgres -d applymate
+docker exec -it applymate-pg psql -U postgres -d applymate
 
-# Example queries
-SELECT * FROM applications;
-SELECT * FROM resumes;
-SELECT * FROM resume_events;
+# Queries
+SELECT * FROM applications ORDER BY created_at DESC;
+SELECT * FROM scan_history ORDER BY first_seen DESC;
+SELECT * FROM pipeline_entries;
 ```
 
-### Rebuild containers (if needed)
+### Reset DB (deletes all data)
 ```bash
-docker rm -f applymate-redis applymate-db
-# Then run the docker run commands from step 1
+docker rm -f applymate-pg
+docker run -d --name applymate-pg \
+  -e POSTGRES_PASSWORD=postgres \
+  -e POSTGRES_DB=applymate \
+  -p 5432:5432 postgres:16-alpine
+```
+
+### Rebuild containers
+```bash
+docker rm -f applymate-pg applymate-redis
+# then docker run commands from step 1
+```
+
+---
+
+## 🔧 Dev Tips
+
+### Mock Mode (No LLM Key)
+Set in `backend/.env`:
+```env
+LLM_MOCK_MODE=true
+```
+Generates realistic fake resume data. Good for frontend dev.
+
+### Test API
+```bash
+# Health
+curl http://localhost:8000/api/health
+
+# Upload resume
+curl -X POST http://localhost:8000/api/resume/upload \
+  -F "file=@resume.pdf"
+
+# Tailor (V3)
+curl -X POST http://localhost:8000/api/resume/tailor-v3 \
+  -F "resume_id=<id>" \
+  -F "job_description=Python developer FastAPI"
+```
+
+### Import career-ops data (script)
+```bash
+cd backend
+python scripts/import_career_ops.py \
+  --source /path/to/career-ops \
+  --user-id your-clerk-id
 ```
 
 ---
@@ -301,24 +340,23 @@ docker rm -f applymate-redis applymate-db
 
 ```
 applymate/
-├── frontend/                 # Next.js 15 frontend
-│   ├── app/                # App router pages
-│   ├── components/         # React components
+├── frontend/                 # Next.js 15
+│   ├── app/                  # Pages (app router)
+│   ├── components/           # React components
 │   └── package.json
 │
-├── backend/                # FastAPI backend
+├── backend/                  # FastAPI
 │   ├── app/
-│   │   ├── api/routes/   # API endpoints (jobs, resumes, applications, etc.)
-│   │   ├── services/      # Database, auth, supabase services
-│   │   └── workers/       # Celery tasks
-│   ├── uploads/           # Uploaded resumes & generated PDFs
-│   ├── celery_app.py      # Celery configuration
+│   │   ├── api/routes/       # Endpoints
+│   │   ├── services/         # DB, auth, LLM orchestration
+│   │   └── workers/          # Celery tasks
+│   ├── uploads/              # Resumes & PDFs
+│   ├── reports/              # Career-ops markdown reports
+│   ├── scripts/              # Import utilities
 │   └── requirements.txt
 │
-├── docs/                  # Documentation
-│   └── LOCAL_SETUP.md    # Detailed local setup guide
-│
-├── config/                # Configuration files
+├── docs/                     # Docs
+├── config/                   # Config files
 └── README.md
 ```
 
@@ -328,25 +366,23 @@ applymate/
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `OPENROUTER_API_KEY` | Yes* | For resume tailoring (*returns 503 if missing) |
-| `CLERK_SECRET_KEY` | No | For production auth |
-| `CLERK_JWT_KEY` | No | For JWT verification |
-| `REDIS_URL` | No | For Celery task queue |
+| `DATABASE_URL` | Yes | PostgreSQL connection |
+| `OPENROUTER_API_KEY` | No* | LLM key (*503 if missing, use mock) |
+| `LLM_MOCK_MODE` | No | `true` to skip LLM calls |
+| `GEMINI_API_KEY` | No | Gemini fallback |
+| `CLERK_SECRET_KEY` | No | Production auth |
+| `FRONTEND_URL` | No | CORS origin |
 
 ---
 
 ## 🚢 Deployment
 
-### Production (Supabase + Railway/Render)
-
-1. Use Supabase Cloud instead of local PostgreSQL
-2. Set `DATABASE_URL` to Supabase connection string
-3. Set `OPENROUTER_API_KEY` for LLM calls
-4. Deploy backend to Railway/Render/Vercel
+- **Backend**: Railway (auto-deploy from GitHub)
+- **Frontend**: Vercel (auto-deploy from GitHub)
+- **Database**: Supabase Cloud or Railway Postgres
 
 ---
 
 ## License
 
-MIT License - see LICENSE for details.
+MIT
