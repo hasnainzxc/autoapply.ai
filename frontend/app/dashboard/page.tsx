@@ -17,9 +17,11 @@ import { ShinyButton } from "@/components/ui/shiny-button";
 interface Application {
   id: string;
   job_title: string;
-  company: string;
-  status: "queued" | "analyzing" | "applying" | "applied" | "failed";
+  company_name: string;
+  status: string;
   match_score?: number;
+  score_rating?: string;
+  portal?: string;
   created_at: string;
 }
 
@@ -185,9 +187,9 @@ export default function DashboardPage() {
                   {applications.slice(0, 5).map((app, index) => (
                     <AnimatedListItem key={app.id} delay={index * 0.1}>
                       <ApplicationItem
-                        title={app.job_title}
-                        company={app.company}
-                        status={app.status}
+                        title={app.company_name || app.job_title}
+                        company={app.job_title}
+                        status={app.status === "applied" || app.status === "confirmed" ? "applied" : app.status}
                         matchScore={app.match_score}
                       />
                     </AnimatedListItem>

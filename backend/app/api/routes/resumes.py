@@ -117,13 +117,8 @@ async def delete_resume(
     ## Deprecated
     Use `/api/resume/tailor-v3` instead.
     """
-    try:
-        resume_uuid = uuid.UUID(resume_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid resume ID")
-    
     resume = db.query(Resume).filter(
-        Resume.id == resume_uuid,
+        Resume.id == resume_id,
         Resume.user_id == current_user
     ).first()
     
@@ -136,9 +131,9 @@ async def delete_resume(
     except Exception:
         pass
     
-    db.query(TailoredResume).filter(TailoredResume.resume_id == resume_uuid).delete()
+    db.query(TailoredResume).filter(TailoredResume.resume_id == resume_id).delete()
     db.query(ResumeEvent).filter(ResumeEvent.tailored_resume_id.in_(
-        db.query(TailoredResume.id).filter(TailoredResume.resume_id == resume_uuid)
+        db.query(TailoredResume.id).filter(TailoredResume.resume_id == resume_id)
     )).delete(synchronize_session=False)
     
     db.delete(resume)
@@ -147,7 +142,7 @@ async def delete_resume(
     return {"status": "deleted", "resume_id": resume_id}
 
 
-def log_resume_event(db: Session, tailored_resume_id: uuid.UUID, event_type: str, message: str, payload: dict = None):
+def log_resume_event(db: Session, tailored_resume_id: str, event_type: str, message: str, payload: dict = None):
     event = ResumeEvent(
         tailored_resume_id=tailored_resume_id,
         event_type=event_type,
@@ -278,12 +273,7 @@ async def tailor_resume(
             detail="LLM service not configured. Please add OPENROUTER_API_KEY to environment."
         )
     
-    try:
-        resume_uuid = uuid.UUID(resume_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid resume_id")
-    
-    resume = db.query(Resume).filter(Resume.id == resume_uuid).first()
+    resume = db.query(Resume).filter(Resume.id == resume_id).first()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
     
@@ -588,13 +578,8 @@ async def download_tailored_resume(
     Use `/api/resume/tailor-v3` instead.
     """
     
-    try:
-        resume_uuid = uuid.UUID(tailored_resume_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid ID")
-    
     tailored = db.query(TailoredResume).filter(
-        TailoredResume.id == resume_uuid,
+        TailoredResume.id == tailored_resume_id,
         TailoredResume.user_id == current_user
     ).first()
     
@@ -626,13 +611,8 @@ async def get_resume_events(
     Use `/api/resume/tailor-v3` instead.
     """
     
-    try:
-        resume_uuid = uuid.UUID(tailored_resume_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid ID")
-    
     events = db.query(ResumeEvent).filter(
-        ResumeEvent.tailored_resume_id == resume_uuid
+        ResumeEvent.tailored_resume_id == tailored_resume_id
     ).order_by(ResumeEvent.created_at).all()
     
     return [
@@ -669,12 +649,7 @@ async def generate_cover_letter(
             detail="LLM service not configured. Please add OPENROUTER_API_KEY to environment."
         )
     
-    try:
-        resume_uuid = uuid.UUID(resume_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid resume_id")
-    
-    resume = db.query(Resume).filter(Resume.id == resume_uuid).first()
+    resume = db.query(Resume).filter(Resume.id == resume_id).first()
     if not resume:
         raise HTTPException(status_code=404, detail="Resume not found")
     

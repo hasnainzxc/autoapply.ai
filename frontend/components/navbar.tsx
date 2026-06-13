@@ -108,7 +108,7 @@ export function Navbar({ variant = "default" }: NavbarProps) {
                   </Link>
                   
                   <div className="hidden sm:block w-9 h-9 rounded-full overflow-hidden ring-2 ring-[#FACC15]/30 hover:ring-[#FACC15]/60 transition-all">
-                    <UserButton afterSignOutUrl="/" />
+                    <UserButton />
                   </div>
                 </>
               ) : (
@@ -254,7 +254,7 @@ export function Navbar({ variant = "default" }: NavbarProps) {
                 <div className="p-4 border-t border-white/[0.06]">
                   <div className="flex items-center gap-3 p-3 rounded-xl bg-white/[0.02]">
                     <div className="w-10 h-10 rounded-full overflow-hidden ring-2 ring-[#FACC15]/20">
-                      <UserButton afterSignOutUrl="/" />
+<UserButton />
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-[#E4E2DD] truncate">
