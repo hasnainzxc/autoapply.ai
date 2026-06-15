@@ -1,5 +1,6 @@
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
+import "../styles/resume-templates.css";
 
 export const metadata = {
   title: "ApplyMate - AI Job Application Automation",

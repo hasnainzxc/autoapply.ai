@@ -480,6 +480,7 @@ async def list_pipeline(
             "title": e.title,
             "company": e.company,
             "section": e.section,
+            "location": e.location,
             "created_at": e.created_at.isoformat() if e.created_at else None,
         }
         for e in entries
