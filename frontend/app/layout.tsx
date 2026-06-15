@@ -1,6 +1,7 @@
 import { ClerkProvider } from "@clerk/nextjs";
 import "./globals.css";
 import "../styles/resume-templates.css";
+import { Providers } from "@/components/providers";
 
 export const metadata = {
   title: "ApplyMate - AI Job Application Automation",
@@ -62,7 +63,7 @@ export default function RootLayout({
           />
         </head>
         <body className="bg-[#080808] text-[#E4E2DD] antialiased min-h-screen safe-area-inset">
-          {children}
+          <Providers>{children}</Providers>
         </body>
       </html>
     </ClerkProvider>
