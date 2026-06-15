@@ -1,0 +1,21 @@
+[Unit]
+Description=OpenCode Headless Server (Career-Ops)
+Documentation=https://opencode.ai
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=%h/.opencode/bin/opencode serve --hostname 127.0.0.1 --port 4196 --print-logs --log-level INFO
+WorkingDirectory=/home/hairzee/prods/job_automation/career-ops
+Restart=always
+RestartSec=5
+Environment=PATH=%h/.opencode/bin:/usr/local/bin:/usr/bin:/bin
+Environment=NODE_ENV=production
+
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=default.target
