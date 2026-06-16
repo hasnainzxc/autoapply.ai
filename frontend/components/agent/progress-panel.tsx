@@ -14,6 +14,7 @@ interface ProgressEvent {
   action?: string;
   message?: string;
   toolName?: string;
+  timestamp?: number;
   todo?: { content: string; status: string };
 }
 

@@ -93,24 +93,15 @@ async function executeCommand(
     // determine career-ops command name
     const commandName = `career-ops-${mode}`;
 
-    // send via SDK
+    // send via SDK (fire-and-forget; SSE events handle completion)
     await opencodeClient.sendCommand(sessionId, commandName, args);
 
-    // since we use mock client, mark done immediately
-    // real SDK will use SSE events for completion
-    eventStore.updateSessionStatus(sessionId, 'done');
-    emitEvent(sessionId, createSessionStatusEvent('done', sessionId));
-
-    // push a mock result event
-    emitEvent(sessionId, {
-      type: 'command_executed',
-      command: commandName,
-      result: JSON.stringify({ mode, args, status: 'completed', sessionId }),
-      sessionId,
-      timestamp: Date.now(),
-    });
+    console.log(`engine: command sent for session ${sessionId.slice(0, 20)}...`);
+    // DO NOT mark done here — SSE subscriber will handle status updates
+    // Session stays "busy" until headless sends completion event
   } catch (err: any) {
     const msg = err?.message ?? String(err);
+    console.error(`engine: command error for ${sessionId.slice(0, 20)}...:`, msg);
     eventStore.updateSessionStatus(sessionId, 'error');
     emitEvent(sessionId, createErrorEvent(msg, sessionId, 'EXEC_ERROR'));
 

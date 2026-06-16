@@ -1,8 +1,16 @@
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, Field
 from app.services.opencode_client import get_client
 
 router = APIRouter()
 client = get_client()
+
+
+class TriggerRequest(BaseModel):
+    mode: str = Field(
+        ..., description="OpenCode mode to trigger (e.g. scan, evaluate, career-ops-scan)"
+    )
+    args: dict | None = None
 
 
 @router.get("/opencode/health")
@@ -18,9 +26,9 @@ async def list_opencode_modes():
 
 
 @router.post("/opencode/trigger")
-async def trigger_opencode_mode(mode: str, args: dict | None = None):
-    session_id = await client.trigger_mode(mode, args or {})
-    return {"session_id": session_id, "mode": mode, "status": "started"}
+async def trigger_opencode_mode(body: TriggerRequest):
+    session_id = await client.trigger_mode(body.mode, body.args or {})
+    return {"session_id": session_id, "mode": body.mode, "status": "started"}
 
 
 @router.get("/opencode/sessions")

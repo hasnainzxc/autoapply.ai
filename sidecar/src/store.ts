@@ -54,11 +54,22 @@ export function updateSessionStatus(sessionId: string, status: SessionStatus): v
 }
 
 export function updateSessionMeta(sessionId: string, meta: Partial<AgentSession>): void {
-  const stored = sessions.get(sessionId);
-  if (stored) {
-    Object.assign(stored.session, meta);
-    stored.updatedAt = getNow();
+  let stored = sessions.get(sessionId);
+  if (!stored) {
+    stored = {
+      session: {
+        id: sessionId,
+        mode: '',
+        status: 'idle',
+        events: [],
+        startTime: getNow(),
+      },
+      updatedAt: getNow(),
+    };
+    sessions.set(sessionId, stored);
   }
+  Object.assign(stored.session, meta);
+  stored.updatedAt = getNow();
 }
 
 export function getEvents(sessionId: string, since?: number): AgentEvent[] {

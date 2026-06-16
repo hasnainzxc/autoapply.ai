@@ -40,6 +40,7 @@ export function useAgentStream(): UseAgentStreamReturn {
   const reconnectAttemptRef = useRef(0);
 
   const MAX_RECONNECT_DELAY = 30000;
+  const MAX_RECONNECT_ATTEMPTS = 5;
   const reconnectAttemptsRef = useRef(0);
 
   const connect = useCallback(() => {
@@ -95,6 +96,10 @@ export function useAgentStream(): UseAgentStreamReturn {
   }, []);
 
   const scheduleReconnect = useCallback(() => {
+    if (reconnectAttemptsRef.current >= MAX_RECONNECT_ATTEMPTS) {
+      setError("Connection failed after max retries");
+      return;
+    }
     const delay = Math.min(
       1000 * Math.pow(2, reconnectAttemptsRef.current),
       MAX_RECONNECT_DELAY
@@ -111,10 +116,11 @@ export function useAgentStream(): UseAgentStreamReturn {
       clearTimeout(reconnectTimerRef.current);
       reconnectTimerRef.current = null;
     }
-    reconnectAttemptsRef.current = 999;
+    reconnectAttemptsRef.current = 999; // prevent reconnect
     wsRef.current?.close();
     wsRef.current = null;
     setIsConnected(false);
+    setError(null);
   }, []);
 
   const sendCommand = useCallback((cmd: object) => {

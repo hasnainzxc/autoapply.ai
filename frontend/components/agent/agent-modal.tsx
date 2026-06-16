@@ -1,159 +1,165 @@
 "use client";
 
-import { useRef, useEffect, useMemo, useCallback } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, OctagonX, Terminal, Loader2 } from "lucide-react";
-import { XtermTerminal, type XtermTerminalHandle } from "./xterm-terminal";
-import { ProgressPanel } from "./progress-panel";
+import { X, OctagonX, Terminal, Loader2, Minus, Bot, PanelRightOpen } from "lucide-react";
+import { AgentChat } from "./agent-chat";
 
 interface AgentModalProps {
   isOpen: boolean;
+  isMinimized: boolean;
   onClose: () => void;
+  onToggleMinimize: () => void;
   mode: string;
   events: any[];
   activeSession: string | null;
   onAbort: () => void;
+  onCommand: (command: string) => void;
+  modes: Array<{ id: string; name: string; command: string; description: string }>;
+  isConnected: boolean;
 }
 
 export function AgentModal({
   isOpen,
+  isMinimized,
   onClose,
+  onToggleMinimize,
   mode,
   events,
   activeSession,
   onAbort,
+  onCommand,
+  modes,
+  isConnected,
 }: AgentModalProps) {
-  const terminalRef = useRef<XtermTerminalHandle>(null);
-
   const status = useMemo(() => {
     const statusEvents = events.filter((e) => e.type === "session_status");
     return statusEvents[statusEvents.length - 1]?.status ?? "idle";
   }, [events]);
 
-  const duration = useMemo(() => {
-    if (events.length < 2) return null;
-    const first = events[0]?.timestamp ?? 0;
-    const last = events[events.length - 1]?.timestamp ?? 0;
-    if (!first || !last) return null;
-    const secs = Math.round((last - first) / 1000);
-    if (secs < 60) return `${secs}s`;
-    return `${Math.floor(secs / 60)}m ${secs % 60}s`;
-  }, [events]);
+  const isBusy = status === "busy";
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
 
-  useEffect(() => {
-    if (!terminalRef.current) return;
-    const textEvents = events.filter(
-      (e) => e.type === "text_delta" && e.text
-    );
-    if (textEvents.length > 0) {
-      const last = textEvents[textEvents.length - 1];
-      terminalRef.current.write(last.text + "\r\n");
-    }
-  }, [events]);
+  if (!mounted) return null;
 
-  const handleKeyDown = useCallback(
-    (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    },
-    [onClose]
-  );
+  return createPortal(
+    <>
+      {/* Floating minimized badge */}
+      <AnimatePresence>
+        {isMinimized && (
+          <motion.button
+            key="minimized-badge"
+            initial={{ x: -80, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -80, opacity: 0 }}
+            transition={{ type: "spring", damping: 25, stiffness: 300 }}
+            onClick={onToggleMinimize}
+            className="fixed left-0 top-1/3 z-[60] flex items-center gap-2 px-2.5 py-3 rounded-r-xl bg-[#121212] border border-l-0 border-white/10 shadow-2xl hover:bg-[#1A1A1A] transition-colors cursor-pointer group"
+            title="Restore Agent Panel"
+          >
+            <div className="relative">
+              <Bot className="w-5 h-5 text-[#FACC15]" />
+              {isBusy && (
+                <span className="absolute -top-1 -right-1 w-2.5 h-2.5 rounded-full bg-green-400 animate-pulse ring-2 ring-[#121212]" />
+              )}
+            </div>
+            <div className="flex flex-col items-start text-left">
+              <span className="text-xs font-medium text-[#E4E2DD]">Agent</span>
+              <span className="text-[10px] text-[#6B6B6B]">
+                {isBusy ? "Running" : status === "done" ? "Done" : "Idle"}
+              </span>
+            </div>
+            <PanelRightOpen className="w-3.5 h-3.5 text-[#6B6B6B] group-hover:text-[#FACC15] transition-colors ml-1" />
+          </motion.button>
+        )}
+      </AnimatePresence>
 
-  useEffect(() => {
-    if (isOpen) {
-      window.addEventListener("keydown", handleKeyDown);
-      return () => window.removeEventListener("keydown", handleKeyDown);
-    }
-  }, [isOpen, handleKeyDown]);
-
-  useEffect(() => {
-    if (isOpen && terminalRef.current) {
-      terminalRef.current.write(
-        `\x1b[33mStarting ${mode} mode...\x1b[0m\r\n`
-      );
-    }
-  }, [isOpen, mode]);
-
-  return (
-    <AnimatePresence>
-      {isOpen && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm"
-        >
+      {/* Backdrop */}
+      <AnimatePresence>
+        {isOpen && (
           <motion.div
-            initial={{ scale: 0.95, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            exit={{ scale: 0.95, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="w-[90vw] h-[85vh] max-w-6xl bg-[#0A0A0A] rounded-2xl border border-white/10 flex flex-col overflow-hidden"
+            key="backdrop"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.15 }}
+            className="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm"
+          />
+        )}
+      </AnimatePresence>
+
+      {/* Side Panel */}
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            key="side-panel"
+            initial={{ x: -480, opacity: 0 }}
+            animate={{ x: 0, opacity: 1 }}
+            exit={{ x: -480, opacity: 0 }}
+            transition={{ type: "spring", damping: 30, stiffness: 300 }}
+            className="fixed left-0 top-0 bottom-0 z-[60] w-[480px] max-w-[95vw] bg-[#0A0A0A] border-r border-white/10 shadow-2xl flex flex-col overflow-hidden"
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-5 py-3 border-b border-white/10 bg-white/5">
-              <div className="flex items-center gap-3">
-                <Terminal className="w-5 h-5 text-[#FACC15]" />
-                <span className="text-[#E4E2DD] font-medium capitalize">{mode}</span>
-                <span className="flex items-center gap-1 text-xs">
-                  {status === "busy" && (
+            <div className="flex items-center justify-between px-4 py-3 border-b border-white/10 bg-[#121212] shrink-0">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className="p-1.5 rounded-lg bg-[#FACC15]/10">
+                  <Terminal className="w-4 h-4 text-[#FACC15]" />
+                </div>
+                <span className="text-[#E4E2DD] font-medium truncate text-sm">Career-Ops Agent</span>
+                <div className="flex items-center gap-1 text-xs shrink-0">
+                  {isBusy && (
                     <>
                       <Loader2 className="w-3 h-3 animate-spin text-[#FACC15]" />
                       <span className="text-[#FACC15]">Running</span>
                     </>
                   )}
-                  {status === "done" && (
-                    <span className="text-green-400">Completed</span>
-                  )}
-                  {status === "error" && (
-                    <span className="text-red-400">Failed</span>
-                  )}
-                </span>
-                {duration && (
-                  <span className="text-[#6B6B6B] text-xs">{duration}</span>
-                )}
+                  {status === "done" && <span className="text-green-400">Completed</span>}
+                  {status === "error" && <span className="text-red-400">Failed</span>}
+                </div>
               </div>
-              <div className="flex items-center gap-2">
-                {status === "busy" && (
+              <div className="flex items-center gap-1.5 shrink-0">
+                {isBusy && (
                   <button
                     onClick={onAbort}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 text-xs transition-colors"
+                    className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-red-500/15 text-red-400 hover:bg-red-500/25 text-xs transition-colors"
+                    title="Abort"
                   >
                     <OctagonX className="w-3.5 h-3.5" />
-                    Abort
+                    <span className="hidden sm:inline">Abort</span>
                   </button>
                 )}
                 <button
-                  onClick={onClose}
-                  className="p-1.5 rounded-lg hover:bg-white/10 text-[#6B6B6B] hover:text-[#E4E2DD] transition-colors"
+                  onClick={onToggleMinimize}
+                  className="p-1.5 rounded-lg hover:bg-white/15 text-[#6B6B6B] hover:text-[#E4E2DD] transition-colors"
+                  title="Minimize"
                 >
-                  <X className="w-5 h-5" />
+                  <Minus className="w-4 h-4" />
+                </button>
+                <button
+                  onClick={onClose}
+                  className="p-1.5 rounded-lg hover:bg-white/15 text-[#6B6B6B] hover:text-[#E4E2DD] transition-colors"
+                  title="Close"
+                >
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
-            {/* Body */}
-            <div className="flex flex-1 overflow-hidden">
-              {/* Terminal (60%) */}
-              <div className="w-3/5 border-r border-white/10">
-                <XtermTerminal ref={terminalRef} className="h-full rounded-none" />
-              </div>
-
-              {/* Progress Panel (40%) */}
-              <div className="w-2/5 overflow-y-auto p-4">
-                <ProgressPanel events={events} activeSession={activeSession} />
-              </div>
-            </div>
-
-            {/* Footer */}
-            <div className="px-5 py-2 border-t border-white/10 bg-white/5 flex items-center gap-4 text-xs text-[#6B6B6B]">
-              <span>Mode: {mode}</span>
-              {activeSession && <span>Session: {activeSession.slice(0, 12)}...</span>}
-              <span>Events: {events.length}</span>
-              {duration && <span>Duration: {duration}</span>}
-            </div>
+            {/* Chat body */}
+            <AgentChat
+              events={events}
+              activeSession={activeSession}
+              onSend={onCommand}
+              modes={modes}
+              isConnected={isConnected}
+              isBusy={isBusy}
+            />
           </motion.div>
-        </motion.div>
-      )}
-    </AnimatePresence>
+        )}
+      </AnimatePresence>
+    </>,
+    document.body
   );
 }

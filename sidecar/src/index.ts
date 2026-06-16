@@ -3,6 +3,7 @@ import cors from 'cors';
 import { createServer } from 'http';
 import { loadConfig } from './config.js';
 import { connectToServer, getConnection } from './opencode/client.js';
+import { subscribeToGlobalEvents } from './opencode/sse-subscriber.js';
 import { WsBroadcastServer } from './ws/server.js';
 import * as engine from './engine.js';
 import * as eventStore from './store.js';
@@ -98,14 +99,11 @@ app.post('/sessions/:id/abort', async (req, res) => {
 const wsServer = new WsBroadcastServer(config.wsSecret);
 
 // integrate WS broadcasts with event system
-const origEmit = (await import('./opencode/events.js')).emitEvent;
-const moduleExports: any = await import('./opencode/events.js');
-const origEmitFn = moduleExports.emitEvent;
-// monkey-patch to broadcast via WS
-moduleExports.emitEvent = (sessionId: string, event: any) => {
-  origEmitFn(sessionId, event);
+import { setBroadcastHandler } from './opencode/events.js';
+setBroadcastHandler((sessionId, event) => {
   wsServer.broadcast(event, sessionId);
-};
+  eventStore.append(sessionId, event);
+});
 
 // ---- Start ----
 
@@ -120,6 +118,9 @@ httpServer.listen(config.sidecarPort, async () => {
   try {
     await connectToServer(config.opencodeHost, config.opencodePort);
     console.log(`connected to opencode at ${config.opencodeHost}:${config.opencodePort}`);
+
+    // subscribe to SSE events for real-time session updates
+    await subscribeToGlobalEvents();
   } catch (err) {
     console.warn(`failed to connect to opencode: ${err}`);
   }

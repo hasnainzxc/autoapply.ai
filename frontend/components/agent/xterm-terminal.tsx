@@ -3,6 +3,7 @@
 import { useEffect, useRef, forwardRef, useImperativeHandle } from "react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 
 export interface XtermTerminalHandle {
@@ -69,10 +70,11 @@ export const XtermTerminal = forwardRef<XtermTerminalHandle, XtermTerminalProps>
         cursorStyle: "bar",
         allowTransparency: false,
         rows: 24,
-        cols: 80,
+        cols: 120,
       });
 
       terminal.loadAddon(fitAddon);
+      terminal.loadAddon(new WebLinksAddon());
       terminal.open(containerRef.current);
 
       terminal.write("OpenCode Career-Ops Agent Terminal\x1b[0m\r\n");

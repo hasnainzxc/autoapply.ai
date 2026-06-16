@@ -13,6 +13,15 @@ interface EventSubscription {
 
 const subscriptions = new Map<string, EventSubscription>();
 
+// Optional broadcast callback (set by WS server for real-time push)
+let _broadcastHandler: ((sessionId: string, event: AgentEvent) => void) | null = null;
+
+export function setBroadcastHandler(
+  handler: ((sessionId: string, event: AgentEvent) => void) | null
+): void {
+  _broadcastHandler = handler;
+}
+
 function normalizeTimestamp(raw: any): number {
   if (typeof raw === 'number') return raw;
   if (typeof raw === 'string') return new Date(raw).getTime();
@@ -141,6 +150,10 @@ export function unsubscribeFromEvents(
 }
 
 export function emitEvent(sessionId: string, event: AgentEvent): void {
+  if (_broadcastHandler) {
+    _broadcastHandler(sessionId, event);
+  }
+
   const sub = subscriptions.get(sessionId);
   if (!sub) return;
 
@@ -164,7 +177,8 @@ export function parseRawEvent(
 
   switch (raw.type) {
     case 'text_delta':
-    case 'message.part.updated': {
+    case 'message.part.updated':
+    case 'message.part.delta': {
       const text =
         raw.text ??
         raw.delta ??
@@ -175,7 +189,9 @@ export function parseRawEvent(
 
     case 'session.status':
     case 'session_status': {
-      const status = raw.status ?? raw.data?.status ?? 'busy';
+      const rawStatus = raw.status ?? raw.data?.status ?? 'busy';
+      // Headless sends {status: {type: "busy"}} or {status: "busy"}
+      const status = typeof rawStatus === 'string' ? rawStatus : rawStatus.type ?? 'busy';
       return { type: 'session_status', status, sessionId: sid, timestamp: ts } as AgentEvent;
     }
 

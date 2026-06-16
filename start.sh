@@ -17,6 +17,12 @@ BACKEND_PID=$!
 # Wait for backend
 sleep 3
 
+# Start sidecar
+echo "🚗 Starting Sidecar..."
+cd /home/hairzee/prods/applymate/sidecar
+npm run dev &
+SIDECAR_PID=$!
+
 # Start frontend
 echo "🎨 Starting Frontend..."
 cd /home/hairzee/prods/applymate/frontend
@@ -26,6 +32,7 @@ FRONTEND_PID=$!
 echo ""
 echo "✅ All services started!"
 echo ""
+echo "   Sidecar:  http://localhost:4197"
 echo "   Backend:  http://localhost:8000"
 echo "   Frontend: http://localhost:3000"
 echo ""
@@ -33,6 +40,6 @@ echo "Press Ctrl+C to stop all services"
 echo ""
 
 # Wait for interrupt
-trap "echo 'Stopping services...'; kill $BACKEND_PID $FRONTEND_PID 2>/dev/null; exit" INT TERM
+trap "echo 'Stopping services...'; kill $BACKEND_PID $FRONTEND_PID $SIDECAR_PID 2>/dev/null; exit" INT TERM
 
 wait

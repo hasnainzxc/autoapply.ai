@@ -13,6 +13,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "@opencode-ai/sdk": "^1.17.7",
     "cors": "^2.8.5",
     "express": "^4.21.0",
     "uuid": "^9.0.1",
