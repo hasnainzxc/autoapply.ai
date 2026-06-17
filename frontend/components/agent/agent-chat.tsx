@@ -72,22 +72,28 @@ export function AgentChat({
   const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const lastProcessedIdxRef = useRef(0);
+  const streamingMsgIdRef = useRef<string | null>(null);
 
   // Convert events to chat messages
   useEffect(() => {
-    if (events.length === 0) return;
+    const fromIdx = lastProcessedIdxRef.current;
+    if (events.length <= fromIdx) return;
+
+    const newEvents = events.slice(fromIdx);
+    lastProcessedIdxRef.current = events.length;
 
     setMessages((prev) => {
       const updated = [...prev];
-      const existingIds = new Set(updated.map((m) => m.id));
+      let seq = updated.length;
 
-      for (const evt of events) {
-        const evtId = `${evt.sessionId || "anon"}-${evt.timestamp}-${evt.type}`;
-        if (existingIds.has(evtId)) continue;
-        existingIds.add(evtId);
+      for (const evt of newEvents) {
+        seq += 1;
+        const evtId = `${evt.sessionId || "anon"}-${evt.type}-${seq}`;
 
         if (evt.type === "session_status") {
           if (evt.status === "busy") {
+            streamingMsgIdRef.current = null;
             updated.push({
               id: evtId,
               role: "system",
@@ -95,6 +101,11 @@ export function AgentChat({
               timestamp: evt.timestamp || Date.now(),
             });
           } else if (evt.status === "done") {
+            if (streamingMsgIdRef.current) {
+              const streamMsg = updated.find((m) => m.id === streamingMsgIdRef.current);
+              if (streamMsg) streamMsg.isStreaming = false;
+              streamingMsgIdRef.current = null;
+            }
             updated.push({
               id: evtId,
               role: "system",
@@ -103,6 +114,11 @@ export function AgentChat({
               toolStatus: "done",
             });
           } else if (evt.status === "error") {
+            if (streamingMsgIdRef.current) {
+              const streamMsg = updated.find((m) => m.id === streamingMsgIdRef.current);
+              if (streamMsg) streamMsg.isStreaming = false;
+              streamingMsgIdRef.current = null;
+            }
             updated.push({
               id: evtId,
               role: "system",
@@ -112,19 +128,23 @@ export function AgentChat({
             });
           }
         } else if (evt.type === "text_delta" && evt.text) {
-          // Stream into last assistant message or create new one
-          const lastMsg = updated[updated.length - 1];
-          if (lastMsg && lastMsg.role === "assistant" && lastMsg.isStreaming) {
-            lastMsg.content += evt.text;
-          } else {
-            updated.push({
-              id: evtId,
-              role: "assistant",
-              content: evt.text,
-              timestamp: evt.timestamp || Date.now(),
-              isStreaming: true,
-            });
+          const streamId = streamingMsgIdRef.current;
+          if (streamId) {
+            const streamMsg = updated.find((m) => m.id === streamId);
+            if (streamMsg) {
+              streamMsg.content += evt.text;
+              continue;
+            }
           }
+          const newId = `${evt.sessionId || "anon"}-stream-${seq}`;
+          streamingMsgIdRef.current = newId;
+          updated.push({
+            id: newId,
+            role: "assistant",
+            content: evt.text,
+            timestamp: evt.timestamp || Date.now(),
+            isStreaming: true,
+          });
         } else if (evt.type === "command_executed") {
           updated.push({
             id: evtId,
@@ -149,7 +169,6 @@ export function AgentChat({
             isExpanded: false,
           });
         } else if (evt.type === "tool_result") {
-          // Find matching tool call and mark done
           const toolMsg = updated.find(
             (m) => m.role === "tool" && m.toolName === evt.toolName && m.toolStatus === "running"
           );
@@ -198,9 +217,13 @@ export function AgentChat({
     }
   }, [isBusy]);
 
-  // Auto-scroll
+  // Auto-scroll: only on new messages, not on every text_delta append
+  const msgCountRef = useRef(0);
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (messages.length !== msgCountRef.current) {
+      msgCountRef.current = messages.length;
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   }, [messages]);
 
   // Filtered modes for autocomplete
