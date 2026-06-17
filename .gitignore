@@ -41,3 +41,4 @@ coverage/
 # Misc
 *.tmp
 *.temp
+backend/applymate.db
