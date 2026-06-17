@@ -1,5 +1,5 @@
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from app.services.opencode_client import get_client
 
 router = APIRouter()
@@ -11,6 +11,13 @@ class TriggerRequest(BaseModel):
         ..., description="OpenCode mode to trigger (e.g. scan, evaluate, career-ops-scan)"
     )
     args: dict | None = None
+
+    @field_validator("mode")
+    @classmethod
+    def mode_not_empty(cls, v: str) -> str:
+        if not v.strip():
+            raise ValueError("mode must be a non-empty string")
+        return v.strip()
 
 
 @router.get("/opencode/health")
