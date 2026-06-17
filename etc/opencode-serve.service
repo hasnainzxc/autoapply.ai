@@ -14,8 +14,6 @@ Environment=NODE_ENV=production
 
 NoNewPrivileges=yes
 PrivateTmp=yes
-ProtectSystem=strict
-ProtectHome=read-only
 
 [Install]
 WantedBy=default.target
