@@ -7,6 +7,7 @@ import { useUser, UserButton } from "@clerk/nextjs";
 import { motion, AnimatePresence } from "framer-motion";
 import { Zap, ChevronRight, X, Home, FileText, Briefcase, Send, CreditCard, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { AgentButton } from "@/components/agent/agent-button";
 
 interface NavbarProps {
   variant?: "default" | "subtle";
@@ -98,6 +99,7 @@ export function Navbar({ variant = "default" }: NavbarProps) {
             <div className="flex items-center gap-2 sm:gap-4">
               {user ? (
                 <>
+                  <AgentButton variant="navbar" />
                   <Link 
                     href="/credits" 
                     className="hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/[0.04] hover:bg-white/[0.08] border border-white/[0.06] text-sm text-[#E4E2DD] transition-all min-h-[44px]"

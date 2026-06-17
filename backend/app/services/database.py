@@ -169,6 +169,7 @@ class PipelineEntry(Base):
     title = Column(String(255))
     company = Column(String(255))
     section = Column(String(50), default="pending")
+    location = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 

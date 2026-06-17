@@ -1,0 +1,3 @@
+# Sidecar process manager
+# Use: `npx proc-start sidecar/Procfile` or run manually
+sidecar: tsx src/index.ts
