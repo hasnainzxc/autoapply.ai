@@ -222,8 +222,9 @@ export function parseRawEvent(
       return { type: 'tool_call', toolName, args, sessionId: sid, timestamp: ts } as AgentEvent;
     }
 
-    case 'error': {
-      const msg = raw.message ?? raw.data?.message ?? 'Unknown error';
+    case 'error':
+    case 'session.error': {
+      const msg = raw.message ?? raw.data?.message ?? raw.info?.error ?? raw.properties?.error ?? 'Unknown error';
       const code = raw.code ?? raw.data?.code;
       return { type: 'error', message: msg, code, sessionId: sid, timestamp: ts } as AgentEvent;
     }

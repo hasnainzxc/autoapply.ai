@@ -41,8 +41,9 @@ export async function executeMode(
     throw new Error('opencode server not connected');
   }
 
-  // create session via SDK
-  const sdkSession = await opencodeClient.createSession(`career-ops-${mode}-${Date.now()}`);
+  // create session via SDK (normalize mode prefix for title)
+  const titleMode = mode.startsWith('career-ops-') ? mode.slice('career-ops-'.length) : mode;
+  const sdkSession = await opencodeClient.createSession(`career-ops-${titleMode}-${Date.now()}`);
   const sessionId: string = sdkSession.id ?? sdkSession.sessionId ?? `fallback-${Date.now()}`;
 
   // init store
@@ -91,7 +92,9 @@ async function executeCommand(
 ): Promise<void> {
   try {
     // determine career-ops command name
-    const commandName = `career-ops-${mode}`;
+    // Mode might be "scan" or "career-ops-scan" — normalize
+    const prefix = 'career-ops-';
+    const commandName = mode.startsWith(prefix) ? mode : `${prefix}${mode}`;
 
     // send via SDK (fire-and-forget; SSE events handle completion)
     await opencodeClient.sendCommand(sessionId, commandName, args);
