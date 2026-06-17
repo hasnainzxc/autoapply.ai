@@ -32,7 +32,7 @@ interface AgentButtonProps {
 export function AgentButton({ variant = "navbar" }: AgentButtonProps) {
   const [panelState, setPanelState] = useState<PanelState>("closed");
   const [modes, setModes] = useState(DEFAULT_MODES);
-  const { connect, disconnect, events, activeSession, isConnected, sendCommand } = useAgent();
+  const { connect, disconnect, events, activeSession, isConnected, sendCommand, registerSession } = useAgent();
 
   // Fetch real modes from API
   useEffect(() => {
@@ -73,29 +73,36 @@ export function AgentButton({ variant = "navbar" }: AgentButtonProps) {
       const trimmed = command.trim();
       if (!trimmed) return;
 
-      // Slash command → trigger mode via HTTP
       if (trimmed.startsWith("/")) {
         const mode = trimmed.slice(1).split(" ")[0];
         if (!mode) return;
-        try {
-          const res = await fetch("/api/opencode/trigger", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ mode, args: {} }),
-          });
-          if (!res.ok) {
-            console.error("trigger failed:", res.status, await res.text());
+        if (activeSession) {
+          sendCommand({ type: "command", command: mode, sessionId: activeSession, args: {} });
+        } else {
+          try {
+            const res = await fetch("/api/opencode/trigger", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ mode, args: {} }),
+            });
+            if (!res.ok) {
+              console.error("trigger failed:", res.status, await res.text());
+            } else {
+              const data = await res.json();
+              if (data?.session_id) {
+                registerSession(data.session_id);
+              }
+            }
+          } catch (e) {
+            console.error("trigger error:", e);
           }
-        } catch (e) {
-          console.error("trigger error:", e);
         }
         return;
       }
 
-      // Plain text → send via WebSocket as chat
-      sendCommand({ type: "chat", text: trimmed });
+      sendCommand({ type: "chat", text: trimmed, ...(activeSession ? { sessionId: activeSession } : {}) });
     },
-    [connect, sendCommand]
+    [connect, sendCommand, activeSession]
   );
 
   const handleAbort = useCallback(async () => {

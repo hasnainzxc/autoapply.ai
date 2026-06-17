@@ -18,6 +18,7 @@ interface UseAgentStreamReturn {
   connect: () => void;
   disconnect: () => void;
   sendCommand: (cmd: object) => void;
+  registerSession: (sessionId: string) => void;
   events: AgentEvent[];
   sessions: string[];
   activeSession: string | null;
@@ -68,9 +69,7 @@ export function useAgentStream(): UseAgentStreamReturn {
               setSessions((prev) =>
                 prev.includes(evt.sessionId) ? prev : [...prev, evt.sessionId]
               );
-              if (evt.type === "session_status" && evt.status === "busy") {
-                setActiveSession(evt.sessionId);
-              }
+              setActiveSession(evt.sessionId);
             }
           } else if (data.type === "pong") {
             // heartbeat ok
@@ -111,6 +110,13 @@ export function useAgentStream(): UseAgentStreamReturn {
     }, delay);
   }, [connect]);
 
+  const registerSession = useCallback((sessionId: string) => {
+    setSessions((prev) =>
+      prev.includes(sessionId) ? prev : [...prev, sessionId]
+    );
+    setActiveSession(sessionId);
+  }, []);
+
   const disconnect = useCallback(() => {
     if (reconnectTimerRef.current) {
       clearTimeout(reconnectTimerRef.current);
@@ -139,6 +145,7 @@ export function useAgentStream(): UseAgentStreamReturn {
     connect,
     disconnect,
     sendCommand,
+    registerSession,
     events,
     sessions,
     activeSession,

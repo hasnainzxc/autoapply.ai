@@ -66,6 +66,13 @@ export interface EventError {
   timestamp: number;
 }
 
+export interface EventReasoning {
+  type: 'reasoning';
+  text: string;
+  sessionId: string;
+  timestamp: number;
+}
+
 export type AgentEvent =
   | EventTextDelta
   | EventToolCall
@@ -73,7 +80,8 @@ export type AgentEvent =
   | EventSessionStatus
   | EventTodoUpdate
   | EventCommandExecuted
-  | EventError;
+  | EventError
+  | EventReasoning;
 
 // ---- Sessions ----
 

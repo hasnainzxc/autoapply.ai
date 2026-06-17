@@ -17,14 +17,23 @@ export interface WsClientPing {
 
 export interface WsClientCommand {
   type: 'command';
-  payload?: Record<string, unknown>;
+  command: string;
+  sessionId?: string;
+  args?: Record<string, unknown>;
+}
+
+export interface WsClientChat {
+  type: 'chat';
+  text: string;
+  sessionId?: string;
 }
 
 export type WsClientMessage =
   | WsClientSubscribe
   | WsClientUnsubscribe
   | WsClientPing
-  | WsClientCommand;
+  | WsClientCommand
+  | WsClientChat;
 
 export interface WsServerEvent {
   type: 'event';
