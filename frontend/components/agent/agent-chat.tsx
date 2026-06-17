@@ -217,7 +217,6 @@ export function AgentChat({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastProcessedIdxRef = useRef(0);
-  const prevDisplayLenRef = useRef(0);
 
   // ─── Event → Stream Processing ─────────────────────────────────────────────
 
@@ -467,12 +466,9 @@ export function AgentChat({
     return merged;
   }, [streams, userMessages]);
 
-  // ─── Auto-scroll on new display items (not on every text_delta) ────────────
+  // ─── Auto-scroll on any content change (text_delta, new items, etc) ──────
   useEffect(() => {
-    if (displayItems.length !== prevDisplayLenRef.current) {
-      prevDisplayLenRef.current = displayItems.length;
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [displayItems]);
 
   // ─── Autocomplete filtering ──────────────────────────────────────────────
