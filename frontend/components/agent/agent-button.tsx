@@ -25,17 +25,22 @@ const DEFAULT_MODES = [
 type PanelState = "closed" | "open" | "minimized";
 
 function getInitialState(): PanelState {
-  if (typeof window === "undefined") return "closed";
-  const saved = localStorage.getItem("agent_panel_state");
-  if (saved === "open" || saved === "minimized") return saved;
+  try {
+    if (typeof window === "undefined") return "closed";
+    const saved = localStorage.getItem("agent_panel_state");
+    if (saved === "open" || saved === "minimized") return saved;
+  } catch { /* localStorage blocked (tests, private mode) */ }
   return "closed";
 }
 
 function getInitialWidth(): number {
-  if (typeof window === "undefined") return 480;
-  const saved = localStorage.getItem("agent_panel_width");
-  const parsed = saved ? parseInt(saved, 10) : NaN;
-  return Number.isFinite(parsed) && parsed >= 320 ? parsed : 480;
+  try {
+    if (typeof window === "undefined") return 480;
+    const saved = localStorage.getItem("agent_panel_width");
+    const parsed = saved ? parseInt(saved, 10) : NaN;
+    return Number.isFinite(parsed) && parsed >= 320 ? parsed : 480;
+  } catch { /* localStorage blocked */ }
+  return 480;
 }
 
 interface AgentButtonProps {
@@ -57,19 +62,11 @@ export function AgentButton({ variant = "navbar" }: AgentButtonProps) {
       .catch(() => {});
   }, []);
 
-  // Persist panel state to localStorage
+  // Persist panel state + width to localStorage
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("agent_panel_state", panelState);
-    }
-  }, [panelState]);
-
-  // Persist panel width to localStorage
-  useEffect(() => {
-    if (typeof window !== "undefined") {
-      localStorage.setItem("agent_panel_width", String(panelWidth));
-    }
-  }, [panelWidth]);
+    localStorage.setItem("agent_panel_state", panelState);
+    localStorage.setItem("agent_panel_width", String(panelWidth));
+  }, [panelState, panelWidth]);
 
   const openModal = useCallback(() => {
     setPanelState("open");

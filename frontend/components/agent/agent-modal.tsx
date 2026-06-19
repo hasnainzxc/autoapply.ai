@@ -150,7 +150,6 @@ export function AgentModal({
                 background: "linear-gradient(180deg, rgba(18,18,18,0.95) 0%, rgba(18,18,18,0.85) 100%)",
                 backdropFilter: "blur(12px)",
                 borderColor: "rgba(255,255,255,0.06)",
-                borderBottomImage: "linear-gradient(90deg, transparent, rgba(255,255,255,0.08) 20%, rgba(255,255,255,0.08) 80%, transparent) 1",
               }}
             >
               <div className="flex items-center gap-3 min-w-0">
@@ -168,36 +167,14 @@ export function AgentModal({
               <div className="flex items-center gap-1.5 shrink-0">
                 <button
                   onClick={onToggleMinimize}
-                  className="p-1.5 rounded-lg text-[#6B6B6B] transition-all duration-200 hover:text-[#E4E2DD] active:scale-95"
-                  style={{
-                    background: "transparent",
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.background = "rgba(255,255,255,0.08)";
-                    (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 0 8px rgba(255,255,255,0.04)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-                    (e.currentTarget as HTMLButtonElement).style.boxShadow = "none";
-                  }}
+                  className="p-1.5 rounded-lg text-[#6B6B6B] transition-all duration-200 hover:text-[#E4E2DD] active:scale-95 hover:bg-white/[0.08] hover:shadow-[0_0_8px_rgba(255,255,255,0.04)]"
                   title="Minimize"
                 >
                   <Minus className="w-4 h-4" />
                 </button>
                 <button
                   onClick={onClose}
-                  className="p-1.5 rounded-lg text-[#6B6B6B] transition-all duration-200 hover:text-[#EF4444] active:scale-95"
-                  style={{
-                    background: "transparent",
-                  }}
-                  onMouseEnter={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.background = "rgba(239,68,68,0.1)";
-                    (e.currentTarget as HTMLButtonElement).style.boxShadow = "0 0 8px rgba(239,68,68,0.08)";
-                  }}
-                  onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLButtonElement).style.background = "transparent";
-                    (e.currentTarget as HTMLButtonElement).style.boxShadow = "none";
-                  }}
+                  className="p-1.5 rounded-lg text-[#6B6B6B] transition-all duration-200 hover:text-[#EF4444] active:scale-95 hover:bg-red-400/[0.1] hover:shadow-[0_0_8px_rgba(239,68,68,0.08)]"
                   title="Close"
                 >
                   <X className="w-4 h-4" />
@@ -206,11 +183,13 @@ export function AgentModal({
             </div>
 
             {/* iframe - opencode native UI on :4196 */}
+            {/* No sandbox: localhost sidecar is trusted. allow-scripts+allow-same-origin
+                would effectively disable sandbox per spec, so explicit no-sandbox is
+                clearer about the trust boundary. */}
             <iframe
               src="http://localhost:4196"
               className={`flex-1 min-h-0 w-full border-0 relative z-0 ${isResizing ? "pointer-events-none" : ""}`}
               title="OpenCode Agent"
-              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
             />
           </motion.div>
         )}
