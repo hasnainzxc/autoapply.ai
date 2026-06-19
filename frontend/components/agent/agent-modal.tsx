@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, OctagonX, Terminal, Loader2, Minus, Bot, PanelRightOpen } from "lucide-react";
-import { AgentChat } from "./agent-chat";
 
 interface AgentModalProps {
   isOpen: boolean;
@@ -148,13 +147,11 @@ export function AgentModal({
             </div>
 
             {/* Chat body */}
-            <AgentChat
-              events={events}
-              activeSession={activeSession}
-              onSend={onCommand}
-              modes={modes}
-              isConnected={isConnected}
-              isBusy={isBusy}
+            <iframe
+              src="http://localhost:4196"
+              className="flex-1 min-h-0 w-full border-0"
+              title="OpenCode Agent"
+              sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
             />
           </motion.div>
         )}
