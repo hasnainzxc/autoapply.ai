@@ -70,3 +70,4 @@ applymate-homepage.png
 
 # Frontend auth artifacts
 frontend/app/(auth)/sign-in/sso-callback/
+backend/applymate.db
