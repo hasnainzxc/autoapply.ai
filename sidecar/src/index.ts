@@ -2,8 +2,9 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { loadConfig } from './config.js';
-import { connectToServer, getConnection } from './opencode/client.js';
+import { connectToServer, getConnection, sendCommand as opencodeSendCommand, sendPrompt, createSession } from './opencode/client.js';
 import { subscribeToGlobalEvents } from './opencode/sse-subscriber.js';
+import { emitEvent, createSessionStatusEvent, createErrorEvent } from './opencode/events.js';
 import { WsBroadcastServer } from './ws/server.js';
 import * as engine from './engine.js';
 import * as eventStore from './store.js';
@@ -97,6 +98,29 @@ app.post('/sessions/:id/abort', async (req, res) => {
 // ---- WebSocket server ----
 
 const wsServer = new WsBroadcastServer(config.wsSecret);
+wsServer.setCommandHandler(async (type, payload) => {
+  const conn = getConnection();
+  if (!conn) return;
+
+  try {
+    if (type === 'command' && payload.command && payload.sessionId) {
+      const prefix = 'career-ops-';
+      const commandName = payload.command.startsWith(prefix) ? payload.command : `${prefix}${payload.command}`;
+      await opencodeSendCommand(payload.sessionId, commandName, payload.args ?? {});
+    } else if (type === 'chat' && payload.text && payload.sessionId) {
+      await sendPrompt(payload.sessionId, payload.text);
+    } else if (type === 'chat' && payload.text && !payload.sessionId) {
+      // No sessionId — auto-create a session for free-form chat
+      const sdkSession = await createSession(`chat-${Date.now()}`);
+      const sessionId: string = sdkSession.id ?? sdkSession.sessionId ?? `fallback-${Date.now()}`;
+      eventStore.updateSessionMeta(sessionId, { id: sessionId, mode: 'chat', status: 'busy', startTime: Date.now() });
+      emitEvent(sessionId, createSessionStatusEvent('busy', sessionId));
+      await sendPrompt(sessionId, payload.text);
+    }
+  } catch (err: any) {
+    console.error('WS command handler error:', err?.message ?? String(err));
+  }
+});
 
 // integrate WS broadcasts with event system
 import { setBroadcastHandler } from './opencode/events.js';

@@ -7,6 +7,7 @@ interface AgentContextValue {
   connect: () => void;
   disconnect: () => void;
   sendCommand: (cmd: object) => void;
+  registerSession: (sessionId: string) => void;
   events: any[];
   sessions: string[];
   activeSession: string | null;
@@ -23,6 +24,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     connect: stream.connect,
     disconnect: stream.disconnect,
     sendCommand: stream.sendCommand,
+    registerSession: stream.registerSession,
     events: stream.events,
     sessions: stream.sessions,
     activeSession: stream.activeSession,
@@ -32,6 +34,7 @@ export function AgentProvider({ children }: { children: ReactNode }) {
     stream.connect,
     stream.disconnect,
     stream.sendCommand,
+    stream.registerSession,
     stream.events,
     stream.sessions,
     stream.activeSession,

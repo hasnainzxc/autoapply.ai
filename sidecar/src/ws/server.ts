@@ -14,6 +14,11 @@ interface ClientInfo {
   metadata: Record<string, unknown>;
 }
 
+export type WsCommandHandler = (
+  type: 'chat' | 'command',
+  payload: { text?: string; command?: string; sessionId?: string; args?: Record<string, unknown> }
+) => Promise<void>;
+
 const HEARTBEAT_INTERVAL = 30_000;
 const HEARTBEAT_TIMEOUT = 10_000;
 
@@ -22,9 +27,14 @@ export class WsBroadcastServer {
   private clients = new Map<string, ClientInfo>();
   private heartbeatTimer: NodeJS.Timeout | null = null;
   private _secret: string;
+  private _commandHandler: WsCommandHandler | null = null;
 
   constructor(secret: string = '') {
     this._secret = secret;
+  }
+
+  setCommandHandler(handler: WsCommandHandler | null): void {
+    this._commandHandler = handler;
   }
 
   get clientCount(): number {
@@ -103,7 +113,15 @@ export class WsBroadcastServer {
         break;
 
       case 'command':
-        // handled by REST API layer, not WS
+        if (this._commandHandler && msg.command) {
+          this._commandHandler('command', { command: msg.command, sessionId: msg.sessionId, args: msg.args });
+        }
+        break;
+
+      case 'chat':
+        if (this._commandHandler && msg.text) {
+          this._commandHandler('chat', { text: msg.text, sessionId: msg.sessionId });
+        }
         break;
     }
   }

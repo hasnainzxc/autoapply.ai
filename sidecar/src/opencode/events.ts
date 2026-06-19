@@ -229,6 +229,17 @@ export function parseRawEvent(
       return { type: 'error', message: msg, code, sessionId: sid, timestamp: ts } as AgentEvent;
     }
 
+    case 'reasoning':
+    case 'message.reasoning': {
+      const text =
+        raw.text ??
+        raw.delta ??
+        raw.content ??
+        raw.data?.text ??
+        '';
+      return { type: 'reasoning', text, sessionId: sid, timestamp: ts } as AgentEvent;
+    }
+
     default:
       return null;
   }

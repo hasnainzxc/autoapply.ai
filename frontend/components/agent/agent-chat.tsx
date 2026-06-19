@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Send,
@@ -17,17 +17,44 @@ import {
   FileText,
   Sparkles,
   Slash,
+  Wrench,
 } from "lucide-react";
 
-interface ChatMessage {
+// ─── Types ───────────────────────────────────────────────────────────────────
+
+interface ToolCallInfo {
   id: string;
-  role: "user" | "assistant" | "tool" | "system";
+  name: string;
+  status: "running" | "done";
+  result?: string;
+}
+
+interface SessionStream {
+  sessionId: string;
+  text: string;
+  tools: ToolCallInfo[];
+  commandResult?: { command: string; result: string };
+  todoItems: string[];
+  status: "streaming" | "done" | "error";
+  errorMsg?: string;
+  timestamp: number;
+  reasoningActive?: boolean;
+  reasoningText?: string;
+}
+
+type StepItemType = 'thinking' | 'exploring' | 'loading' | 'error' | 'success' | 'info' | 'text';
+
+interface StepItem {
+  type: StepItemType;
+  content: string;
+  suggestion?: string;
+}
+
+interface UserMessage {
+  id: string;
+  role: "user";
   content: string;
   timestamp: number;
-  toolName?: string;
-  toolStatus?: "running" | "done" | "error";
-  isStreaming?: boolean;
-  isExpanded?: boolean;
 }
 
 interface AgentChatProps {
@@ -38,6 +65,8 @@ interface AgentChatProps {
   isConnected: boolean;
   isBusy: boolean;
 }
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function formatTime(ts: number): string {
   const d = new Date(ts);
@@ -51,11 +80,120 @@ function ToolIcon({ name }: { name?: string }) {
     fetch: <Globe className="w-3.5 h-3.5" />,
     read: <FileText className="w-3.5 h-3.5" />,
     think: <Sparkles className="w-3.5 h-3.5" />,
+    write: <FileText className="w-3.5 h-3.5" />,
+    edit: <FileText className="w-3.5 h-3.5" />,
+    bash: <Terminal className="w-3.5 h-3.5" />,
+    command: <Terminal className="w-3.5 h-3.5" />,
+    tectonic: <Terminal className="w-3.5 h-3.5" />,
+    glob: <Search className="w-3.5 h-3.5" />,
+    grep: <Search className="w-3.5 h-3.5" />,
   };
   if (!name) return <Terminal className="w-3.5 h-3.5" />;
   const key = Object.keys(iconMap).find((k) => name.toLowerCase().includes(k));
-  return key ? iconMap[key] : <Terminal className="w-3.5 h-3.5" />;
+  return key ? iconMap[key] : <Wrench className="w-3.5 h-3.5" />;
 }
+
+/** Overlap-based dedup for text_delta events carrying full text */
+function dedupAppend(current: string, delta: string): string {
+  const maxCheck = Math.min(current.length, delta.length);
+  for (let i = maxCheck; i >= 1; i--) {
+    if (current.slice(-i) === delta.slice(0, i)) {
+      return delta.slice(i);
+    }
+  }
+  return delta;
+}
+
+function StatusBadge({ status, errorMsg }: { status: SessionStream["status"]; errorMsg?: string }) {
+  if (status === "streaming") {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] text-[#FACC15]/80 font-mono">
+        <span className="w-1.5 h-1.5 rounded-full bg-[#FACC15] animate-pulse" />
+        Running
+      </span>
+    );
+  }
+  if (status === "done") {
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] text-green-400/80 font-mono">
+        <CheckCircle2 className="w-2.5 h-2.5" />
+        Done
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] text-red-400/80 font-mono" title={errorMsg}>
+      <AlertCircle className="w-2.5 h-2.5" />
+      Error
+    </span>
+  );
+}
+
+// ─── Step Parsing ────────────────────────────────────────────────────────────
+
+function parseSteps(text: string): StepItem[] {
+  const lines = text.split('\n');
+  const steps: StepItem[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (!trimmed) {
+      steps.push({ type: 'text', content: line });
+      i++;
+      continue;
+    }
+
+    const lower = trimmed.toLowerCase();
+
+    if (lower.startsWith('thinking')) {
+      steps.push({ type: 'thinking', content: line });
+      i++;
+    } else if (lower.startsWith('explored') || lower.startsWith('searching') || lower.startsWith('reading')) {
+      steps.push({ type: 'exploring', content: line });
+      i++;
+    } else if (lower.includes('loaded')) {
+      steps.push({ type: 'loading', content: line });
+      i++;
+    } else if (lower.includes('completed') || lower.includes('done')) {
+      steps.push({ type: 'success', content: line });
+      i++;
+    } else if (lower.startsWith('error:')) {
+      let suggestion = '';
+      let j = i + 1;
+      while (j < lines.length) {
+        const nt = lines[j].trim();
+        if (!nt) { j++; continue; }
+        const nl = nt.toLowerCase();
+        if (
+          !nl.startsWith('thinking') && !nl.startsWith('explored') &&
+          !nl.startsWith('searching') && !nl.startsWith('reading') &&
+          !nl.includes('loaded') && !nl.includes('completed') && !nl.includes('done') &&
+          !nl.startsWith('error:') && !nl.startsWith('$') && !nl.startsWith('|')
+        ) {
+          suggestion += (suggestion ? '\n' : '') + lines[j];
+          j++;
+        } else {
+          break;
+        }
+      }
+      steps.push({ type: 'error', content: line, suggestion: suggestion || undefined });
+      i = j;
+    } else if (lower.startsWith('$') || lower.startsWith('|')) {
+      steps.push({ type: 'info', content: line });
+      i++;
+    } else {
+      steps.push({ type: 'text', content: line });
+      i++;
+    }
+  }
+
+  return steps;
+}
+
+// ─── Component ───────────────────────────────────────────────────────────────
 
 export function AgentChat({
   events,
@@ -65,17 +203,23 @@ export function AgentChat({
   isConnected,
   isBusy,
 }: AgentChatProps) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // Session-grouped stream state (one per sessionId)
+  const [streams, setStreams] = useState<Map<string, SessionStream>>(new Map());
+  // User messages stored separately
+  const [userMessages, setUserMessages] = useState<UserMessage[]>([]);
+  // Which session streams have tools expanded
+  const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
+
   const [input, setInput] = useState("");
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [autocompleteIndex, setAutocompleteIndex] = useState(0);
-  const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const lastProcessedIdxRef = useRef(0);
-  const streamingMsgIdRef = useRef<string | null>(null);
 
-  // Convert events to chat messages
+  // ─── Event → Stream Processing ─────────────────────────────────────────────
+
   useEffect(() => {
     const fromIdx = lastProcessedIdxRef.current;
     if (events.length <= fromIdx) return;
@@ -83,168 +227,266 @@ export function AgentChat({
     const newEvents = events.slice(fromIdx);
     lastProcessedIdxRef.current = events.length;
 
-    setMessages((prev) => {
-      const updated = [...prev];
-      let seq = updated.length;
+    setStreams((prev) => {
+      const next = new Map(prev);
 
       for (const evt of newEvents) {
-        seq += 1;
-        const evtId = `${evt.sessionId || "anon"}-${evt.type}-${seq}`;
+        const sid = evt.sessionId || "default";
 
         if (evt.type === "session_status") {
           if (evt.status === "busy") {
-            streamingMsgIdRef.current = null;
-            updated.push({
-              id: evtId,
-              role: "system",
-              content: `Started processing...`,
-              timestamp: evt.timestamp || Date.now(),
-            });
+            const existing = next.get(sid);
+            if (!existing || existing.status === "done" || existing.status === "error") {
+              // Fresh stream for this session
+              next.set(sid, {
+                sessionId: sid,
+                text: "",
+                tools: [],
+                todoItems: [],
+                status: "streaming",
+                timestamp: evt.timestamp || Date.now(),
+              });
+            } else {
+              // Ensure status is streaming
+              next.set(sid, { ...existing, status: "streaming", reasoningActive: false });
+            }
           } else if (evt.status === "done") {
-            if (streamingMsgIdRef.current) {
-              const streamMsg = updated.find((m) => m.id === streamingMsgIdRef.current);
-              if (streamMsg) streamMsg.isStreaming = false;
-              streamingMsgIdRef.current = null;
+            const existing = next.get(sid);
+            if (existing) {
+              next.set(sid, { ...existing, status: "done", reasoningActive: false });
             }
-            updated.push({
-              id: evtId,
-              role: "system",
-              content: `Completed`,
-              timestamp: evt.timestamp || Date.now(),
-              toolStatus: "done",
-            });
           } else if (evt.status === "error") {
-            if (streamingMsgIdRef.current) {
-              const streamMsg = updated.find((m) => m.id === streamingMsgIdRef.current);
-              if (streamMsg) streamMsg.isStreaming = false;
-              streamingMsgIdRef.current = null;
+            const existing = next.get(sid);
+            if (existing) {
+              next.set(sid, { ...existing, status: "error", errorMsg: evt.message || "Unknown error", reasoningActive: false });
+            } else {
+              next.set(sid, {
+                sessionId: sid,
+                text: "",
+                tools: [],
+                todoItems: [],
+                status: "error",
+                errorMsg: evt.message || "Unknown error",
+                timestamp: evt.timestamp || Date.now(),
+              });
             }
-            updated.push({
-              id: evtId,
-              role: "system",
-              content: `Error: ${evt.message || "Unknown error"}`,
-              timestamp: evt.timestamp || Date.now(),
-              toolStatus: "error",
-            });
           }
         } else if (evt.type === "text_delta" && evt.text) {
-          const streamId = streamingMsgIdRef.current;
-          if (streamId) {
-            const streamMsg = updated.find((m) => m.id === streamId);
-            if (streamMsg) {
-              streamMsg.content += evt.text;
-              continue;
+          const existing = next.get(sid);
+          if (existing) {
+            const deduped = dedupAppend(existing.text, evt.text);
+            if (deduped) {
+              next.set(sid, { ...existing, reasoningActive: false, text: existing.text + deduped });
             }
+          } else {
+            // Text arrives before session_status/busy
+            next.set(sid, {
+              sessionId: sid,
+              text: evt.text,
+              tools: [],
+              todoItems: [],
+              status: "streaming",
+              timestamp: evt.timestamp || Date.now(),
+            });
           }
-          const newId = `${evt.sessionId || "anon"}-stream-${seq}`;
-          streamingMsgIdRef.current = newId;
-          updated.push({
-            id: newId,
-            role: "assistant",
-            content: evt.text,
-            timestamp: evt.timestamp || Date.now(),
-            isStreaming: true,
-          });
+        } else if (evt.type === "tool_call") {
+          const tool: ToolCallInfo = {
+            id: evt.toolName ? `${sid}-${evt.toolName}` : `tool-${next.size}-${Date.now()}`,
+            name: evt.toolName || evt.description || "tool",
+            status: "running",
+          };
+          const existing = next.get(sid);
+          if (existing) {
+            next.set(sid, { ...existing, tools: [...existing.tools, tool] });
+          } else {
+            next.set(sid, {
+              sessionId: sid,
+              text: "",
+              tools: [tool],
+              todoItems: [],
+              status: "streaming",
+              timestamp: evt.timestamp || Date.now(),
+            });
+          }
+        } else if (evt.type === "tool_result") {
+          const existing = next.get(sid);
+          if (existing) {
+            const tools = existing.tools.map((t) =>
+              t.status === "running" && (t.name === evt.toolName)
+                ? { ...t, status: "done" as const, result: evt.result }
+                : t
+            );
+            // If no name match, mark last running tool
+            const stillRunning = tools.some((t) => t.status === "running" && t.name === evt.toolName);
+            const updatedTools = stillRunning
+              ? tools
+              : (() => {
+                  const idx = tools.findIndex((t) => t.status === "running");
+                  if (idx >= 0) {
+                    const copy = [...tools];
+                    copy[idx] = { ...copy[idx], status: "done" as const, result: evt.result };
+                    return copy;
+                  }
+                  return tools;
+                })();
+            next.set(sid, { ...existing, tools: updatedTools });
+          }
         } else if (evt.type === "command_executed") {
-          updated.push({
-            id: evtId,
-            role: "assistant",
-            content: evt.result
+          const result =
+            evt.result
               ? typeof evt.result === "string"
                 ? evt.result
                 : JSON.stringify(evt.result, null, 2)
-              : `Command completed: ${evt.command}`,
-            timestamp: evt.timestamp || Date.now(),
-          });
-        } else if (evt.type === "tool_call") {
-          updated.push({
-            id: evtId,
-            role: "tool",
-            content: evt.toolName
-              ? `Running ${evt.toolName}...`
-              : evt.description || "Executing tool...",
-            timestamp: evt.timestamp || Date.now(),
-            toolName: evt.toolName,
-            toolStatus: "running",
-            isExpanded: false,
-          });
-        } else if (evt.type === "tool_result") {
-          const toolMsg = updated.find(
-            (m) => m.role === "tool" && m.toolName === evt.toolName && m.toolStatus === "running"
-          );
-          if (toolMsg) {
-            toolMsg.toolStatus = "done";
-            toolMsg.content = evt.result
-              ? typeof evt.result === "string"
-                ? evt.result.slice(0, 200)
-                : JSON.stringify(evt.result).slice(0, 200)
-              : `${evt.toolName || "Tool"} completed`;
+              : "";
+          const existing = next.get(sid);
+          if (existing) {
+            next.set(sid, {
+              ...existing,
+              commandResult: { command: evt.command || "", result },
+            });
           } else {
-            updated.push({
-              id: evtId,
-              role: "tool",
-              content: evt.result
-                ? typeof evt.result === "string"
-                  ? evt.result.slice(0, 200)
-                  : JSON.stringify(evt.result).slice(0, 200)
-                : "Tool completed",
+            next.set(sid, {
+              sessionId: sid,
+              text: "",
+              tools: [],
+              todoItems: [],
+              commandResult: { command: evt.command || "", result },
+              status: "streaming",
               timestamp: evt.timestamp || Date.now(),
-              toolName: evt.toolName,
-              toolStatus: "done",
+            });
+          }
+        } else if (evt.type === "todo_update") {
+          const todoItem = evt.todo?.content || "Task";
+          const done = evt.todo?.status === "completed" || evt.todo?.status === "done";
+          const formatted = `${done ? "☑" : "☐"} ${todoItem}`;
+          const existing = next.get(sid);
+          if (existing) {
+            next.set(sid, {
+              ...existing,
+              todoItems: [...existing.todoItems, formatted],
+            });
+          } else {
+            next.set(sid, {
+              sessionId: sid,
+              text: "",
+              tools: [],
+              todoItems: [formatted],
+              status: "streaming",
+              timestamp: evt.timestamp || Date.now(),
+            });
+          }
+        } else if (evt.type === "reasoning") {
+          const existing = next.get(sid);
+          if (existing) {
+            next.set(sid, { ...existing, reasoningActive: true, reasoningText: evt.text || 'Thinking...' });
+          } else {
+            next.set(sid, {
+              sessionId: sid,
+              text: "",
+              tools: [],
+              todoItems: [],
+              status: "streaming",
+              reasoningActive: true,
+              reasoningText: evt.text || 'Thinking...',
+              timestamp: evt.timestamp || Date.now(),
             });
           }
         } else if (evt.type === "error") {
-          updated.push({
-            id: evtId,
-            role: "system",
-            content: evt.message || evt.text || "An error occurred",
-            timestamp: evt.timestamp || Date.now(),
-            toolStatus: "error",
-          });
+          const errMsg = evt.message || evt.text || "An error occurred";
+          const existing = next.get(sid);
+          if (existing) {
+            next.set(sid, { ...existing, status: "error", errorMsg: errMsg });
+          } else {
+            next.set(sid, {
+              sessionId: sid,
+              text: "",
+              tools: [],
+              todoItems: [],
+              status: "error",
+              errorMsg: errMsg,
+              timestamp: evt.timestamp || Date.now(),
+            });
+          }
         }
       }
 
-      return updated;
+      return next;
     });
   }, [events]);
 
-  // Close streaming messages when done
+  // ─── Fallback: mark streams done when isBusy goes false ────────────────────
   useEffect(() => {
     if (!isBusy) {
-      setMessages((prev) =>
-        prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m))
-      );
+      setStreams((prev) => {
+        const next = new Map(prev);
+        let changed = false;
+        for (const [sid, s] of next) {
+          if (s.status === "streaming") {
+            next.set(sid, { ...s, status: "done" });
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
     }
   }, [isBusy]);
 
-  // Auto-scroll: only on new messages, not on every text_delta append
-  const msgCountRef = useRef(0);
-  useEffect(() => {
-    if (messages.length !== msgCountRef.current) {
-      msgCountRef.current = messages.length;
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages]);
+  // ─── Build display list (user messages + streams, ordered by time) ────────
+  const displayItems = useMemo<(UserMessage | SessionStream)[]>(() => {
+    const streamList = Array.from(streams.values())
+      .filter(
+        (s) =>
+          s.text ||
+          s.tools.length > 0 ||
+          s.commandResult ||
+          s.todoItems.length > 0 ||
+          s.status === "error"
+      )
+      .sort((a, b) => a.timestamp - b.timestamp);
 
-  // Filtered modes for autocomplete
+    // Interleave by timestamp
+    const merged: (UserMessage | SessionStream)[] = [];
+    let ui = 0;
+    let si = 0;
+    while (ui < userMessages.length || si < streamList.length) {
+      if (si >= streamList.length) {
+        merged.push(userMessages[ui]);
+        ui++;
+      } else if (ui >= userMessages.length) {
+        merged.push(streamList[si]);
+        si++;
+      } else if (userMessages[ui].timestamp <= streamList[si].timestamp) {
+        merged.push(userMessages[ui]);
+        ui++;
+      } else {
+        merged.push(streamList[si]);
+        si++;
+      }
+    }
+    return merged;
+  }, [streams, userMessages]);
+
+  // ─── Auto-scroll on any content change (text_delta, new items, etc) ──────
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [displayItems]);
+
+  // ─── Autocomplete filtering ──────────────────────────────────────────────
   const filteredModes = input.startsWith("/")
     ? modes.filter((m) =>
         m.command.toLowerCase().includes(input.slice(1).toLowerCase())
       )
     : [];
 
+  // ─── Send handler ───────────────────────────────────────────────────────
   const handleSend = useCallback(() => {
     const trimmed = input.trim();
     if (!trimmed || !isConnected) return;
 
-    // Add user message
-    const userMsg: ChatMessage = {
-      id: `user-${Date.now()}`,
-      role: "user",
-      content: trimmed,
-      timestamp: Date.now(),
-    };
-    setMessages((prev) => [...prev, userMsg]);
+    setUserMessages((prev) => [
+      ...prev,
+      { id: `user-${Date.now()}`, role: "user", content: trimmed, timestamp: Date.now() },
+    ]);
 
     onSend(trimmed);
     setInput("");
@@ -260,15 +502,11 @@ export function AgentChat({
         if (mode) {
           setInput(`/${mode.command} `);
           setShowAutocomplete(false);
-          // Send the command
           const cmd = `/${mode.command}`;
-          const userMsg: ChatMessage = {
-            id: `user-${Date.now()}`,
-            role: "user",
-            content: cmd,
-            timestamp: Date.now(),
-          };
-          setMessages((prev) => [...prev, userMsg]);
+          setUserMessages((prev) => [
+            ...prev,
+            { id: `user-${Date.now()}`, role: "user", content: cmd, timestamp: Date.now() },
+          ]);
           onSend(cmd);
         }
       } else {
@@ -293,21 +531,258 @@ export function AgentChat({
     inputRef.current?.focus();
   };
 
-  const toggleToolExpand = (id: string) => {
+  // ─── Render helpers ────────────────────────────────────────────────────
+
+  const toggleToolsExpand = (sessionId: string) => {
     setExpandedTools((prev) => {
       const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      if (next.has(sessionId)) next.delete(sessionId);
+      else next.add(sessionId);
       return next;
     });
   };
 
+  /** Render a typed step item with appropriate icon and color */
+  const renderTypedStep = (step: StepItem, idx: number) => {
+    switch (step.type) {
+      case 'thinking':
+        return (
+          <div key={idx} className="flex items-start gap-1.5 text-[#FACC15]/60 text-xs leading-relaxed">
+            <Sparkles className="w-3 h-3 shrink-0 mt-0.5 text-[#FACC15] animate-thinking-pulse" />
+            <span className="flex-1">{step.content}</span>
+            <span className="w-1 h-1 rounded-full bg-[#FACC15] animate-thinking-pulse shrink-0 mt-1.5" />
+          </div>
+        );
+      case 'exploring':
+        return (
+          <div key={idx} className="flex items-start gap-1.5 text-[#60A5FA]/80 text-xs leading-relaxed pl-2">
+            <Search className="w-3 h-3 shrink-0 mt-0.5" />
+            <span className="flex-1">{step.content}</span>
+          </div>
+        );
+      case 'loading':
+        return (
+          <div key={idx} className="flex items-start gap-1.5 text-[#4ADE80]/80 text-xs leading-relaxed">
+            <CheckCircle2 className="w-3 h-3 shrink-0 mt-0.5 text-[#4ADE80]" />
+            <span className="flex-1 font-medium">{step.content}</span>
+          </div>
+        );
+      case 'success':
+        return (
+          <div key={idx} className="flex items-start gap-1.5 text-[#4ADE80]/80 text-xs leading-relaxed">
+            <CheckCircle2 className="w-3 h-3 shrink-0 mt-0.5 text-[#4ADE80]" />
+            <span className="flex-1">{step.content}</span>
+          </div>
+        );
+      case 'error':
+        return (
+          <div key={idx} className="mt-1">
+            <div className="flex items-start gap-1.5 text-xs leading-relaxed text-red-400 font-mono border-l-2 border-red-400/30 pl-2">
+              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-red-400" />
+              <span className="flex-1">{step.content}</span>
+            </div>
+            {step.suggestion && (
+              <motion.div
+                initial={{ opacity: 0, y: -4 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1, duration: 0.2 }}
+                className="mt-0.5 ml-5 text-[11px] text-red-400/60 italic border-l-2 border-red-400/20 pl-2 leading-relaxed"
+              >
+                {step.suggestion}
+              </motion.div>
+            )}
+          </div>
+        );
+      case 'info':
+        return (
+          <div key={idx} className="flex items-start gap-1.5 text-xs leading-relaxed text-green-400/80 font-mono">
+            <Terminal className="w-3 h-3 shrink-0 mt-0.5" />
+            <span className="flex-1">{step.content}</span>
+          </div>
+        );
+      default:
+        return (
+          <div key={idx} className="text-sm leading-relaxed whitespace-pre-wrap break-words font-mono text-[#E4E2DD]">
+            {step.content}
+          </div>
+        );
+    }
+  };
+
+  /** Render a single SessionStream as a unified message bubble */
+  const renderSessionStream = (stream: SessionStream) => (
+    <motion.div
+      key={stream.sessionId}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
+      className="flex gap-2 justify-start"
+    >
+      {/* Avatar */}
+      <div className="shrink-0 w-7 h-7 rounded-full bg-[#FACC15]/10 flex items-center justify-center mt-0.5">
+        <Bot className="w-3.5 h-3.5 text-[#FACC15]" />
+      </div>
+
+      {/* Bubble */}
+      <div className="max-w-[85%] rounded-xl px-3.5 py-2 bg-white/5 border border-white/10 text-[#E4E2DD]">
+        {/* Header row */}
+        <div className="flex items-center gap-2 mb-1">
+          <span className="text-xs font-medium text-[#FACC15]/80">Agent</span>
+          <StatusBadge status={stream.status} errorMsg={stream.errorMsg} />
+          <span className="text-[10px] text-[#6B6B6B]/60 ml-auto">
+            {formatTime(stream.timestamp)}
+          </span>
+        </div>
+
+        {/* Reasoning indicator */}
+        {stream.reasoningActive && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
+            className="flex items-center gap-1.5 text-[#FACC15]/80 text-xs font-mono mt-1 mb-1 overflow-hidden"
+          >
+            <Sparkles className="w-3 h-3 text-[#FACC15] animate-thinking-pulse shrink-0" />
+            <span className="animate-thinking-shimmer rounded px-1">{stream.reasoningText || 'Thinking...'}</span>
+          </motion.div>
+        )}
+
+        {/* Text content with step-parsed visual distinction */}
+        {stream.text && (
+          <div className="text-sm leading-relaxed whitespace-pre-wrap break-words font-mono mt-1">
+            {(() => {
+              const steps = parseSteps(stream.text);
+              let pipeIdx = 0;
+              return steps.map((step, i) => {
+                // Handle pipe-delimited tables with alternating rows
+                if (step.type === 'info' && step.content.trimStart().startsWith('|')) {
+                  const pIdx = pipeIdx++;
+                  const isOdd = pIdx % 2 === 1;
+                  return (
+                    <div key={i} className={`text-xs leading-relaxed font-mono text-[#E4E2DD] ${isOdd ? 'bg-white/5 rounded px-1 -mx-1' : ''}`}>
+                      {step.content}
+                    </div>
+                  );
+                }
+                // Empty lines as vertical spacer
+                if (step.type === 'text' && step.content.trim() === '') {
+                  return <div key={i} className="h-2" />;
+                }
+                return renderTypedStep(step, i);
+              });
+            })()}
+            {stream.status === "streaming" && (
+              <span className="inline-block w-2 h-4 bg-[#FACC15] animate-pulse ml-0.5 rounded-sm" />
+            )}
+          </div>
+        )}
+
+        {/* Error message */}
+        {stream.status === "error" && stream.errorMsg && (
+          <div className="mt-2 flex items-start gap-1.5 text-xs text-red-400 font-mono">
+            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+            <span>{stream.errorMsg}</span>
+          </div>
+        )}
+
+        {/* Command result */}
+        {stream.commandResult && (
+          <div className="mt-2">
+            {stream.commandResult.command && (
+              <div className="text-[10px] text-[#6B6B6B] font-mono mb-1">
+                $ {stream.commandResult.command}
+              </div>
+            )}
+            <pre className="text-xs text-[#E4E2DD]/80 whitespace-pre-wrap font-mono bg-black/40 rounded-lg p-2 border border-white/5 overflow-x-auto">
+              {stream.commandResult.result}
+            </pre>
+          </div>
+        )}
+
+        {/* Tool calls — collapsible section */}
+        {stream.tools.length > 0 && (
+          <div className="mt-2 border-t border-white/5 pt-2">
+            <button
+              onClick={() => toggleToolsExpand(stream.sessionId)}
+              className="flex items-center gap-1 text-xs font-mono text-[#6B6B6B] hover:text-[#E4E2DD] transition-colors"
+            >
+              {expandedTools.has(stream.sessionId) ? (
+                <ChevronDown className="w-3 h-3" />
+              ) : (
+                <ChevronRight className="w-3 h-3" />
+              )}
+              <span>Tools ({stream.tools.length})</span>
+            </button>
+            {expandedTools.has(stream.sessionId) && (
+              <div className="mt-1 space-y-1">
+                {stream.tools.map((tool) => (
+                  <div key={tool.id} className="flex items-center gap-1.5 text-xs font-mono text-[#E4E2DD]/80">
+                    <ToolIcon name={tool.name} />
+                    <span className="truncate max-w-[200px]">{tool.name}</span>
+                    {tool.status === "running" ? (
+                      <Loader2 className="w-3 h-3 animate-spin text-[#FACC15] shrink-0" />
+                    ) : (
+                      <CheckCircle2 className="w-3 h-3 text-green-400 shrink-0" />
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Todo items */}
+        {stream.todoItems.length > 0 && (
+          <div className="mt-2 border-t border-white/5 pt-2">
+            <div className="text-[10px] text-[#6B6B6B] font-mono mb-1">Todo:</div>
+            {stream.todoItems.map((item, i) => (
+              <div key={i} className="text-xs font-mono text-[#E4E2DD]/80 leading-relaxed">
+                {item}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+
+  /** Render a user message bubble */
+  const renderUserMessage = (msg: UserMessage) => (
+    <motion.div
+      key={msg.id}
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.2 }}
+      className="flex gap-2 justify-end"
+    >
+      {/* Bubble */}
+      <div className="max-w-[85%] rounded-xl px-3.5 py-2 bg-[#FACC15]/10 border border-[#FACC15]/20 text-[#E4E2DD]">
+        <div className="flex items-center gap-2 mb-0.5">
+          <span className="text-xs font-medium text-[#FACC15]/80">You</span>
+          <span className="text-[10px] text-[#6B6B6B]/60 ml-auto">
+            {formatTime(msg.timestamp)}
+          </span>
+        </div>
+        <div className="text-sm leading-relaxed whitespace-pre-wrap break-words mt-0.5">
+          {msg.content}
+        </div>
+      </div>
+
+      {/* Avatar */}
+      <div className="shrink-0 w-7 h-7 rounded-full bg-[#FACC15] flex items-center justify-center mt-0.5">
+        <User className="w-3.5 h-3.5 text-black" />
+      </div>
+    </motion.div>
+  );
+
+  // ─── Render ─────────────────────────────────────────────────────────────────
+
   return (
-    <div className="flex flex-col h-full bg-[#0A0A0A]">
+    <div className="flex flex-col flex-1 min-h-0 bg-[#0A0A0A]">
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-0">
         <AnimatePresence initial={false}>
-          {messages.length === 0 && (
+          {displayItems.length === 0 && (
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -338,115 +813,10 @@ export function AgentChat({
             </motion.div>
           )}
 
-          {messages.map((msg) => (
-            <motion.div
-              key={msg.id}
-              initial={{ opacity: 0, y: 8 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.2 }}
-              className={`flex gap-2 ${
-                msg.role === "user" ? "justify-end" : "justify-start"
-              }`}
-            >
-              {/* Avatar */}
-              {msg.role !== "user" && (
-                <div className="shrink-0 w-7 h-7 rounded-full bg-[#FACC15]/10 flex items-center justify-center mt-0.5">
-                  {msg.role === "tool" ? (
-                    <ToolIcon name={msg.toolName} />
-                  ) : msg.role === "system" ? (
-                    msg.toolStatus === "error" ? (
-                      <AlertCircle className="w-3.5 h-3.5 text-red-400" />
-                    ) : msg.toolStatus === "done" ? (
-                      <CheckCircle2 className="w-3.5 h-3.5 text-green-400" />
-                    ) : (
-                      <Terminal className="w-3.5 h-3.5 text-[#6B6B6B]" />
-                    )
-                  ) : (
-                    <Bot className="w-3.5 h-3.5 text-[#FACC15]" />
-                  )}
-                </div>
-              )}
-
-              {/* Bubble */}
-              <div
-                className={`max-w-[85%] rounded-xl px-3.5 py-2 ${
-                  msg.role === "user"
-                    ? "bg-[#FACC15]/10 border border-[#FACC15]/20 text-[#E4E2DD]"
-                    : msg.role === "system"
-                    ? msg.toolStatus === "done"
-                      ? "bg-green-500/10 border border-green-500/20 text-green-300"
-                      : msg.toolStatus === "error"
-                      ? "bg-red-500/10 border border-red-500/20 text-red-300"
-                      : "bg-white/5 border border-white/10 text-[#6B6B6B]"
-                    : msg.role === "tool"
-                    ? "bg-white/5 border border-white/10"
-                    : "bg-white/5 border border-white/10 text-[#E4E2DD]"
-                }`}
-              >
-                {/* Header */}
-                <div className="flex items-center gap-2 mb-0.5">
-                  {msg.role === "user" && (
-                    <span className="text-xs font-medium text-[#FACC15]/80">You</span>
-                  )}
-                  {msg.role === "assistant" && (
-                    <span className="text-xs font-medium text-[#FACC15]/80">Agent</span>
-                  )}
-                  {msg.role === "tool" && (
-                    <button
-                      onClick={() => toggleToolExpand(msg.id)}
-                      className="flex items-center gap-1 text-xs font-mono text-[#6B6B6B] hover:text-[#E4E2DD] transition-colors"
-                    >
-                      {expandedTools.has(msg.id) ? (
-                        <ChevronDown className="w-3 h-3" />
-                      ) : (
-                        <ChevronRight className="w-3 h-3" />
-                      )}
-                      <span>{msg.toolName || "Tool"}</span>
-                      {msg.toolStatus === "running" && (
-                        <Loader2 className="w-3 h-3 animate-spin ml-1" />
-                      )}
-                      {msg.toolStatus === "done" && (
-                        <CheckCircle2 className="w-3 h-3 text-green-400 ml-1" />
-                      )}
-                    </button>
-                  )}
-                  {msg.role === "system" && (
-                    <span className="text-xs text-[#6B6B6B]">
-                      {msg.toolStatus === "done" ? "Done" : msg.toolStatus === "error" ? "Error" : "Status"}
-                    </span>
-                  )}
-                  <span className="text-[10px] text-[#6B6B6B]/60 ml-auto">
-                    {formatTime(msg.timestamp)}
-                  </span>
-                </div>
-
-                {/* Content */}
-                {msg.role === "tool" ? (
-                  <div className={expandedTools.has(msg.id) ? "" : "hidden"}>
-                    <pre className="text-xs text-[#E4E2DD]/80 whitespace-pre-wrap font-mono mt-1">
-                      {msg.content}
-                    </pre>
-                  </div>
-                ) : msg.role === "system" ? (
-                  <p className="text-xs mt-0.5">{msg.content}</p>
-                ) : (
-                  <div className="text-sm leading-relaxed whitespace-pre-wrap break-words mt-0.5">
-                    {msg.content}
-                    {msg.isStreaming && (
-                      <span className="inline-block w-2 h-4 bg-[#FACC15] animate-pulse ml-0.5 rounded-sm" />
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* User avatar */}
-              {msg.role === "user" && (
-                <div className="shrink-0 w-7 h-7 rounded-full bg-[#FACC15] flex items-center justify-center mt-0.5">
-                  <User className="w-3.5 h-3.5 text-black" />
-                </div>
-              )}
-            </motion.div>
-          ))}
+          {displayItems.map((item) => {
+            if ("role" in item && item.role === "user") return renderUserMessage(item);
+            return renderSessionStream(item as SessionStream);
+          })}
         </AnimatePresence>
         <div ref={messagesEndRef} />
       </div>
@@ -514,6 +884,24 @@ export function AgentChat({
           </div>
         )}
       </div>
+      <style>{`
+        @keyframes thinking-pulse {
+          0%, 100% { opacity: 1; transform: scale(1); }
+          50% { opacity: 0.3; transform: scale(0.8); }
+        }
+        @keyframes thinking-shimmer {
+          0% { background-position: -200% center; }
+          100% { background-position: 200% center; }
+        }
+        .animate-thinking-pulse {
+          animation: thinking-pulse 0.8s ease-in-out infinite;
+        }
+        .animate-thinking-shimmer {
+          background: linear-gradient(90deg, transparent 0%, rgba(250,204,21,0.15) 50%, transparent 100%);
+          background-size: 200% 100%;
+          animation: thinking-shimmer 1.5s ease-in-out infinite;
+        }
+      `}</style>
     </div>
   );
 }

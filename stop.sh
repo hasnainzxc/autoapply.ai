@@ -1,15 +1,42 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
 
-# ApplyMate - Stop all services
+echo "╔══════════════════════════════════════╗"
+echo "║        Stopping ApplyMate            ║"
+echo "╚══════════════════════════════════════╝"
 
-echo "🛑 Stopping ApplyMate..."
+PORTS="4197 8000 3000"
 
-# Stop Docker containers
+# Stop opencode via systemd (kill won't stick — Restart=always respawns)
+echo "  [..] Stopping opencode-serve (systemd)..."
+if systemctl --user stop opencode-serve 2>/dev/null; then
+  echo "  [OK] opencode-serve stopped"
+else
+  echo "  [..] opencode-serve not running"
+fi
+
+# Kill other processes by port
+for port in $PORTS; do
+  pids=$(lsof -ti:"$port" 2>/dev/null || true)
+  if [[ -n "$pids" ]]; then
+    kill $pids 2>/dev/null || true
+    sleep 0.3
+    pids=$(lsof -ti:"$port" 2>/dev/null || true)
+    if [[ -n "$pids" ]]; then
+      kill -9 $pids 2>/dev/null || true
+    fi
+    echo "  [OK] Killed :$port"
+  else
+    echo "  [..] Nothing on :$port"
+  fi
+done
+
+# Stop Docker
+echo ""
 echo "📦 Stopping Docker containers..."
-docker stop applymate-db applymate-redis 2>/dev/null
+docker stop applymate-pg applymate-redis 2>/dev/null \
+  && echo "  [OK] Docker stopped" \
+  || echo "  [..] Docker not running"
 
-# Kill backend and frontend
-pkill -f "uvicorn app.main" 2>/dev/null
-pkill -f "next dev" 2>/dev/null
-
-echo "✅ All services stopped!"
+echo ""
+echo "✅ All services stopped."
