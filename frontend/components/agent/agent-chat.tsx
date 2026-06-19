@@ -18,36 +18,37 @@ import {
   Sparkles,
   Slash,
   Wrench,
+  FilePlus,
+  FileEdit,
+  FileMinus,
+  ListTodo,
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-interface ToolCallInfo {
-  id: string;
-  name: string;
-  status: "running" | "done";
+interface AgentEvent {
+  type: string;
+  text?: string;
+  sessionId?: string;
+  timestamp?: number;
+  status?: string;
+  command?: string;
   result?: string;
+  toolName?: string;
+  args?: Record<string, unknown>;
+  message?: string;
+  filePath?: string;
+  action?: string;
+  todo?: { content: string; status: string };
+  code?: string;
 }
 
 interface SessionStream {
   sessionId: string;
-  text: string;
-  tools: ToolCallInfo[];
-  commandResult?: { command: string; result: string };
-  todoItems: string[];
+  events: AgentEvent[];
   status: "streaming" | "done" | "error";
   errorMsg?: string;
   timestamp: number;
-  reasoningActive?: boolean;
-  reasoningText?: string;
-}
-
-type StepItemType = 'thinking' | 'exploring' | 'loading' | 'error' | 'success' | 'info' | 'text';
-
-interface StepItem {
-  type: StepItemType;
-  content: string;
-  suggestion?: string;
 }
 
 interface UserMessage {
@@ -129,70 +130,6 @@ function StatusBadge({ status, errorMsg }: { status: SessionStream["status"]; er
   );
 }
 
-// ─── Step Parsing ────────────────────────────────────────────────────────────
-
-function parseSteps(text: string): StepItem[] {
-  const lines = text.split('\n');
-  const steps: StepItem[] = [];
-  let i = 0;
-
-  while (i < lines.length) {
-    const line = lines[i];
-    const trimmed = line.trim();
-
-    if (!trimmed) {
-      steps.push({ type: 'text', content: line });
-      i++;
-      continue;
-    }
-
-    const lower = trimmed.toLowerCase();
-
-    if (lower.startsWith('thinking')) {
-      steps.push({ type: 'thinking', content: line });
-      i++;
-    } else if (lower.startsWith('explored') || lower.startsWith('searching') || lower.startsWith('reading')) {
-      steps.push({ type: 'exploring', content: line });
-      i++;
-    } else if (lower.includes('loaded')) {
-      steps.push({ type: 'loading', content: line });
-      i++;
-    } else if (lower.includes('completed') || lower.includes('done')) {
-      steps.push({ type: 'success', content: line });
-      i++;
-    } else if (lower.startsWith('error:')) {
-      let suggestion = '';
-      let j = i + 1;
-      while (j < lines.length) {
-        const nt = lines[j].trim();
-        if (!nt) { j++; continue; }
-        const nl = nt.toLowerCase();
-        if (
-          !nl.startsWith('thinking') && !nl.startsWith('explored') &&
-          !nl.startsWith('searching') && !nl.startsWith('reading') &&
-          !nl.includes('loaded') && !nl.includes('completed') && !nl.includes('done') &&
-          !nl.startsWith('error:') && !nl.startsWith('$') && !nl.startsWith('|')
-        ) {
-          suggestion += (suggestion ? '\n' : '') + lines[j];
-          j++;
-        } else {
-          break;
-        }
-      }
-      steps.push({ type: 'error', content: line, suggestion: suggestion || undefined });
-      i = j;
-    } else if (lower.startsWith('$') || lower.startsWith('|')) {
-      steps.push({ type: 'info', content: line });
-      i++;
-    } else {
-      steps.push({ type: 'text', content: line });
-      i++;
-    }
-  }
-
-  return steps;
-}
-
 // ─── Component ───────────────────────────────────────────────────────────────
 
 export function AgentChat({
@@ -203,13 +140,8 @@ export function AgentChat({
   isConnected,
   isBusy,
 }: AgentChatProps) {
-  // Session-grouped stream state (one per sessionId)
   const [streams, setStreams] = useState<Map<string, SessionStream>>(new Map());
-  // User messages stored separately
   const [userMessages, setUserMessages] = useState<UserMessage[]>([]);
-  // Which session streams have tools expanded
-  const [expandedTools, setExpandedTools] = useState<Set<string>>(new Set());
-
   const [input, setInput] = useState("");
   const [showAutocomplete, setShowAutocomplete] = useState(false);
   const [autocompleteIndex, setAutocompleteIndex] = useState(0);
@@ -218,7 +150,7 @@ export function AgentChat({
   const inputRef = useRef<HTMLInputElement>(null);
   const lastProcessedIdxRef = useRef(0);
 
-  // ─── Event → Stream Processing ─────────────────────────────────────────────
+  // ─── Event → Stream Processing (store raw events) ──────────────────────────
 
   useEffect(() => {
     const fromIdx = lastProcessedIdxRef.current;
@@ -237,173 +169,81 @@ export function AgentChat({
           if (evt.status === "busy") {
             const existing = next.get(sid);
             if (!existing || existing.status === "done" || existing.status === "error") {
-              // Fresh stream for this session
               next.set(sid, {
                 sessionId: sid,
-                text: "",
-                tools: [],
-                todoItems: [],
+                events: [evt],
                 status: "streaming",
                 timestamp: evt.timestamp || Date.now(),
               });
             } else {
-              // Ensure status is streaming
-              next.set(sid, { ...existing, status: "streaming", reasoningActive: false });
+              next.set(sid, {
+                ...existing,
+                events: [...existing.events, evt],
+                status: "streaming",
+              });
             }
           } else if (evt.status === "done") {
             const existing = next.get(sid);
             if (existing) {
-              next.set(sid, { ...existing, status: "done", reasoningActive: false });
+              next.set(sid, {
+                ...existing,
+                events: [...existing.events, evt],
+                status: "done",
+              });
             }
           } else if (evt.status === "error") {
             const existing = next.get(sid);
             if (existing) {
-              next.set(sid, { ...existing, status: "error", errorMsg: evt.message || "Unknown error", reasoningActive: false });
+              next.set(sid, {
+                ...existing,
+                events: [...existing.events, evt],
+                status: "error",
+                errorMsg: evt.message || "Unknown error",
+              });
             } else {
               next.set(sid, {
                 sessionId: sid,
-                text: "",
-                tools: [],
-                todoItems: [],
+                events: [evt],
                 status: "error",
                 errorMsg: evt.message || "Unknown error",
                 timestamp: evt.timestamp || Date.now(),
               });
             }
           }
-        } else if (evt.type === "text_delta" && evt.text) {
+        } else if (evt.type === "text_delta") {
+          // Merge text_delta with previous to handle overlapping full-text events
           const existing = next.get(sid);
           if (existing) {
-            const deduped = dedupAppend(existing.text, evt.text);
-            if (deduped) {
-              next.set(sid, { ...existing, reasoningActive: false, text: existing.text + deduped });
+            const lastEvent = existing.events[existing.events.length - 1];
+            if (lastEvent?.type === "text_delta") {
+              const deduped = dedupAppend(lastEvent.text || "", evt.text || "");
+              const updatedEvents = [...existing.events];
+              updatedEvents[updatedEvents.length - 1] = {
+                ...lastEvent,
+                text: (lastEvent.text || "") + deduped,
+              };
+              next.set(sid, { ...existing, events: updatedEvents });
+            } else {
+              next.set(sid, { ...existing, events: [...existing.events, evt] });
             }
           } else {
-            // Text arrives before session_status/busy
             next.set(sid, {
               sessionId: sid,
-              text: evt.text,
-              tools: [],
-              todoItems: [],
+              events: [evt],
               status: "streaming",
               timestamp: evt.timestamp || Date.now(),
             });
           }
-        } else if (evt.type === "tool_call") {
-          const tool: ToolCallInfo = {
-            id: evt.toolName ? `${sid}-${evt.toolName}` : `tool-${next.size}-${Date.now()}`,
-            name: evt.toolName || evt.description || "tool",
-            status: "running",
-          };
+        } else {
+          // All other event types: append to events array
           const existing = next.get(sid);
           if (existing) {
-            next.set(sid, { ...existing, tools: [...existing.tools, tool] });
+            next.set(sid, { ...existing, events: [...existing.events, evt] });
           } else {
             next.set(sid, {
               sessionId: sid,
-              text: "",
-              tools: [tool],
-              todoItems: [],
+              events: [evt],
               status: "streaming",
-              timestamp: evt.timestamp || Date.now(),
-            });
-          }
-        } else if (evt.type === "tool_result") {
-          const existing = next.get(sid);
-          if (existing) {
-            const tools = existing.tools.map((t) =>
-              t.status === "running" && (t.name === evt.toolName)
-                ? { ...t, status: "done" as const, result: evt.result }
-                : t
-            );
-            // If no name match, mark last running tool
-            const stillRunning = tools.some((t) => t.status === "running" && t.name === evt.toolName);
-            const updatedTools = stillRunning
-              ? tools
-              : (() => {
-                  const idx = tools.findIndex((t) => t.status === "running");
-                  if (idx >= 0) {
-                    const copy = [...tools];
-                    copy[idx] = { ...copy[idx], status: "done" as const, result: evt.result };
-                    return copy;
-                  }
-                  return tools;
-                })();
-            next.set(sid, { ...existing, tools: updatedTools });
-          }
-        } else if (evt.type === "command_executed") {
-          const result =
-            evt.result
-              ? typeof evt.result === "string"
-                ? evt.result
-                : JSON.stringify(evt.result, null, 2)
-              : "";
-          const existing = next.get(sid);
-          if (existing) {
-            next.set(sid, {
-              ...existing,
-              commandResult: { command: evt.command || "", result },
-            });
-          } else {
-            next.set(sid, {
-              sessionId: sid,
-              text: "",
-              tools: [],
-              todoItems: [],
-              commandResult: { command: evt.command || "", result },
-              status: "streaming",
-              timestamp: evt.timestamp || Date.now(),
-            });
-          }
-        } else if (evt.type === "todo_update") {
-          const todoItem = evt.todo?.content || "Task";
-          const done = evt.todo?.status === "completed" || evt.todo?.status === "done";
-          const formatted = `${done ? "☑" : "☐"} ${todoItem}`;
-          const existing = next.get(sid);
-          if (existing) {
-            next.set(sid, {
-              ...existing,
-              todoItems: [...existing.todoItems, formatted],
-            });
-          } else {
-            next.set(sid, {
-              sessionId: sid,
-              text: "",
-              tools: [],
-              todoItems: [formatted],
-              status: "streaming",
-              timestamp: evt.timestamp || Date.now(),
-            });
-          }
-        } else if (evt.type === "reasoning") {
-          const existing = next.get(sid);
-          if (existing) {
-            next.set(sid, { ...existing, reasoningActive: true, reasoningText: evt.text || 'Thinking...' });
-          } else {
-            next.set(sid, {
-              sessionId: sid,
-              text: "",
-              tools: [],
-              todoItems: [],
-              status: "streaming",
-              reasoningActive: true,
-              reasoningText: evt.text || 'Thinking...',
-              timestamp: evt.timestamp || Date.now(),
-            });
-          }
-        } else if (evt.type === "error") {
-          const errMsg = evt.message || evt.text || "An error occurred";
-          const existing = next.get(sid);
-          if (existing) {
-            next.set(sid, { ...existing, status: "error", errorMsg: errMsg });
-          } else {
-            next.set(sid, {
-              sessionId: sid,
-              text: "",
-              tools: [],
-              todoItems: [],
-              status: "error",
-              errorMsg: errMsg,
               timestamp: evt.timestamp || Date.now(),
             });
           }
@@ -434,17 +274,9 @@ export function AgentChat({
   // ─── Build display list (user messages + streams, ordered by time) ────────
   const displayItems = useMemo<(UserMessage | SessionStream)[]>(() => {
     const streamList = Array.from(streams.values())
-      .filter(
-        (s) =>
-          s.text ||
-          s.tools.length > 0 ||
-          s.commandResult ||
-          s.todoItems.length > 0 ||
-          s.status === "error"
-      )
+      .filter((s) => s.events.length > 0 || s.status === "error")
       .sort((a, b) => a.timestamp - b.timestamp);
 
-    // Interleave by timestamp
     const merged: (UserMessage | SessionStream)[] = [];
     let ui = 0;
     let si = 0;
@@ -466,7 +298,7 @@ export function AgentChat({
     return merged;
   }, [streams, userMessages]);
 
-  // ─── Auto-scroll on any content change (text_delta, new items, etc) ──────
+  // ─── Auto-scroll on any content change ─────────────────────────────────────
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [displayItems]);
@@ -497,7 +329,6 @@ export function AgentChat({
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       if (showAutocomplete && filteredModes.length > 0) {
-        // Select autocomplete AND send immediately
         const mode = filteredModes[autocompleteIndex];
         if (mode) {
           setInput(`/${mode.command} `);
@@ -531,85 +362,170 @@ export function AgentChat({
     inputRef.current?.focus();
   };
 
-  // ─── Render helpers ────────────────────────────────────────────────────
+  // ─── Render: individual event elements ─────────────────────────────────────
 
-  const toggleToolsExpand = (sessionId: string) => {
-    setExpandedTools((prev) => {
-      const next = new Set(prev);
-      if (next.has(sessionId)) next.delete(sessionId);
-      else next.add(sessionId);
-      return next;
-    });
-  };
+  const renderEvent = (evt: AgentEvent, idx: number) => {
+    const key = `${evt.type}-${idx}-${evt.timestamp || idx}`;
 
-  /** Render a typed step item with appropriate icon and color */
-  const renderTypedStep = (step: StepItem, idx: number) => {
-    switch (step.type) {
-      case 'thinking':
+    switch (evt.type) {
+      case "reasoning": {
+        const text = evt.text || "Thinking...";
         return (
-          <div key={idx} className="flex items-start gap-1.5 text-[#FACC15]/60 text-xs leading-relaxed">
-            <Sparkles className="w-3 h-3 shrink-0 mt-0.5 text-[#FACC15] animate-thinking-pulse" />
-            <span className="flex-1">{step.content}</span>
-            <span className="w-1 h-1 rounded-full bg-[#FACC15] animate-thinking-pulse shrink-0 mt-1.5" />
-          </div>
+          <motion.div
+            key={key}
+            initial={{ opacity: 0, x: -4 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="flex items-start gap-2 px-2 py-1.5 rounded-lg bg-[#FACC15]/5 border border-[#FACC15]/10"
+          >
+            <Sparkles className="w-3.5 h-3.5 shrink-0 mt-0.5 text-[#FACC15] animate-thinking-pulse" />
+            <span className="text-xs text-[#FACC15]/70 font-mono leading-relaxed whitespace-pre-wrap break-words flex-1">
+              {text}
+            </span>
+          </motion.div>
         );
-      case 'exploring':
+      }
+
+      case "tool_call": {
+        const name = evt.toolName || "unknown";
+        const argsStr = evt.args ? JSON.stringify(evt.args) : "";
         return (
-          <div key={idx} className="flex items-start gap-1.5 text-[#60A5FA]/80 text-xs leading-relaxed pl-2">
-            <Search className="w-3 h-3 shrink-0 mt-0.5" />
-            <span className="flex-1">{step.content}</span>
-          </div>
-        );
-      case 'loading':
-        return (
-          <div key={idx} className="flex items-start gap-1.5 text-[#4ADE80]/80 text-xs leading-relaxed">
-            <CheckCircle2 className="w-3 h-3 shrink-0 mt-0.5 text-[#4ADE80]" />
-            <span className="flex-1 font-medium">{step.content}</span>
-          </div>
-        );
-      case 'success':
-        return (
-          <div key={idx} className="flex items-start gap-1.5 text-[#4ADE80]/80 text-xs leading-relaxed">
-            <CheckCircle2 className="w-3 h-3 shrink-0 mt-0.5 text-[#4ADE80]" />
-            <span className="flex-1">{step.content}</span>
-          </div>
-        );
-      case 'error':
-        return (
-          <div key={idx} className="mt-1">
-            <div className="flex items-start gap-1.5 text-xs leading-relaxed text-red-400 font-mono border-l-2 border-red-400/30 pl-2">
-              <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-red-400" />
-              <span className="flex-1">{step.content}</span>
+          <motion.div
+            key={key}
+            initial={{ opacity: 0, x: -4 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="flex items-start gap-2 px-2.5 py-2 rounded-lg bg-white/[0.03] border border-white/[0.06] hover:border-white/[0.1] transition-colors"
+          >
+            <div className="shrink-0 w-5 h-5 rounded-md bg-[#60A5FA]/10 flex items-center justify-center mt-0.5">
+              <ToolIcon name={name} />
             </div>
-            {step.suggestion && (
-              <motion.div
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.1, duration: 0.2 }}
-                className="mt-0.5 ml-5 text-[11px] text-red-400/60 italic border-l-2 border-red-400/20 pl-2 leading-relaxed"
-              >
-                {step.suggestion}
-              </motion.div>
+            <div className="flex-1 min-w-0">
+              <div className="text-xs font-mono text-[#60A5FA] font-medium truncate">
+                {name}
+              </div>
+              {argsStr && (
+                <div className="text-[11px] font-mono text-[#6B6B6B] truncate mt-0.5" title={argsStr}>
+                  ({argsStr.length > 80 ? argsStr.slice(0, 80) + "…" : argsStr})
+                </div>
+              )}
+            </div>
+            <Loader2 className="w-3 h-3 shrink-0 text-[#FACC15]/60 animate-spin mt-1" />
+          </motion.div>
+        );
+      }
+
+      case "file_edit": {
+        const path = evt.filePath || "unknown";
+        const action = evt.action || "modify";
+        const actionConfig = {
+          create: { icon: <FilePlus className="w-3 h-3" />, color: "text-[#4ADE80]", bg: "bg-[#4ADE80]/10", label: "Created" },
+          modify: { icon: <FileEdit className="w-3 h-3" />, color: "text-[#60A5FA]", bg: "bg-[#60A5FA]/10", label: "Modified" },
+          delete: { icon: <FileMinus className="w-3 h-3" />, color: "text-red-400", bg: "bg-red-400/10", label: "Deleted" },
+        };
+        const cfg = actionConfig[action as keyof typeof actionConfig] || actionConfig.modify;
+        return (
+          <motion.div
+            key={key}
+            initial={{ opacity: 0, x: -4 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-white/[0.03] border border-white/[0.06]"
+          >
+            <FileText className="w-3.5 h-3.5 shrink-0 text-[#6B6B6B]" />
+            <span className={`text-[10px] font-mono font-medium px-1.5 py-0.5 rounded ${cfg.bg} ${cfg.color}`}>
+              {cfg.label}
+            </span>
+            <span className="text-xs font-mono text-[#E4E2DD]/80 truncate flex-1" title={path}>
+              {path}
+            </span>
+          </motion.div>
+        );
+      }
+
+      case "todo_update": {
+        const todo = evt.todo;
+        const content = todo?.content || "Task";
+        const done = todo?.status === "completed" || todo?.status === "done";
+        return (
+          <motion.div
+            key={key}
+            initial={{ opacity: 0, x: -4 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="flex items-center gap-2 px-2 py-1"
+          >
+            <ListTodo className={`w-3.5 h-3.5 shrink-0 ${done ? "text-[#4ADE80]" : "text-[#6B6B6B]"}`} />
+            {done ? (
+              <CheckCircle2 className="w-3 h-3 shrink-0 text-[#4ADE80]" />
+            ) : (
+              <div className="w-3 h-3 shrink-0 rounded-sm border border-[#6B6B6B]/50" />
             )}
-          </div>
+            <span className={`text-xs font-mono ${done ? "text-[#6B6B6B] line-through" : "text-[#E4E2DD]/80"}`}>
+              {content}
+            </span>
+          </motion.div>
         );
-      case 'info':
+      }
+
+      case "text_delta": {
+        const text = evt.text || "";
+        if (!text.trim()) return null;
         return (
-          <div key={idx} className="flex items-start gap-1.5 text-xs leading-relaxed text-green-400/80 font-mono">
-            <Terminal className="w-3 h-3 shrink-0 mt-0.5" />
-            <span className="flex-1">{step.content}</span>
-          </div>
+          <motion.div
+            key={key}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="text-sm leading-relaxed whitespace-pre-wrap break-words font-mono text-[#E4E2DD] px-1"
+          >
+            {text}
+          </motion.div>
         );
+      }
+
+      case "command_executed": {
+        return (
+          <motion.div
+            key={key}
+            initial={{ opacity: 0, x: -4 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="rounded-lg bg-black/40 border border-white/5 overflow-hidden"
+          >
+            {evt.command && (
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 border-b border-white/5">
+                <Terminal className="w-3 h-3 text-[#6B6B6B]" />
+                <span className="text-[10px] font-mono text-[#6B6B6B]">
+                  $ {evt.command}
+                </span>
+              </div>
+            )}
+            {evt.result && (
+              <pre className="text-xs text-[#E4E2DD]/70 font-mono p-2.5 overflow-x-auto whitespace-pre-wrap">
+                {evt.result}
+              </pre>
+            )}
+          </motion.div>
+        );
+      }
+
+      case "error": {
+        return (
+          <motion.div
+            key={key}
+            initial={{ opacity: 0, x: -4 }}
+            animate={{ opacity: 1, x: 0 }}
+            className="flex items-start gap-2 px-2.5 py-2 rounded-lg bg-red-400/5 border border-red-400/10"
+          >
+            <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5 text-red-400" />
+            <span className="text-xs font-mono text-red-400/90 leading-relaxed flex-1">
+              {evt.message || evt.text || "An error occurred"}
+            </span>
+          </motion.div>
+        );
+      }
+
       default:
-        return (
-          <div key={idx} className="text-sm leading-relaxed whitespace-pre-wrap break-words font-mono text-[#E4E2DD]">
-            {step.content}
-          </div>
-        );
+        return null;
     }
   };
 
-  /** Render a single SessionStream as a unified message bubble */
+  /** Render a single SessionStream as a timeline of events */
   const renderSessionStream = (stream: SessionStream) => (
     <motion.div
       key={stream.sessionId}
@@ -624,9 +540,9 @@ export function AgentChat({
       </div>
 
       {/* Bubble */}
-      <div className="max-w-[85%] rounded-xl px-3.5 py-2 bg-white/5 border border-white/10 text-[#E4E2DD]">
+      <div className="max-w-[85%] rounded-xl px-3.5 py-2.5 bg-white/5 border border-white/10 text-[#E4E2DD] min-w-[200px]">
         {/* Header row */}
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center gap-2 mb-2">
           <span className="text-xs font-medium text-[#FACC15]/80">Agent</span>
           <StatusBadge status={stream.status} errorMsg={stream.errorMsg} />
           <span className="text-[10px] text-[#6B6B6B]/60 ml-auto">
@@ -634,112 +550,24 @@ export function AgentChat({
           </span>
         </div>
 
-        {/* Reasoning indicator */}
-        {stream.reasoningActive && (
-          <motion.div
-            initial={{ opacity: 0, height: 0 }}
-            animate={{ opacity: 1, height: 'auto' }}
-            exit={{ opacity: 0, height: 0 }}
-            className="flex items-center gap-1.5 text-[#FACC15]/80 text-xs font-mono mt-1 mb-1 overflow-hidden"
-          >
-            <Sparkles className="w-3 h-3 text-[#FACC15] animate-thinking-pulse shrink-0" />
-            <span className="animate-thinking-shimmer rounded px-1">{stream.reasoningText || 'Thinking...'}</span>
-          </motion.div>
-        )}
+        {/* Timeline of events */}
+        <div className="space-y-1.5">
+          {stream.events.map((evt, idx) => {
+            // Skip session_status events — they update header, not timeline
+            if (evt.type === "session_status") return null;
+            return renderEvent(evt, idx);
+          })}
+          {/* Cursor for streaming */}
+          {stream.status === "streaming" && (
+            <span className="inline-block w-2 h-4 bg-[#FACC15] animate-pulse ml-1 rounded-sm" />
+          )}
+        </div>
 
-        {/* Text content with step-parsed visual distinction */}
-        {stream.text && (
-          <div className="text-sm leading-relaxed whitespace-pre-wrap break-words font-mono mt-1">
-            {(() => {
-              const steps = parseSteps(stream.text);
-              let pipeIdx = 0;
-              return steps.map((step, i) => {
-                // Handle pipe-delimited tables with alternating rows
-                if (step.type === 'info' && step.content.trimStart().startsWith('|')) {
-                  const pIdx = pipeIdx++;
-                  const isOdd = pIdx % 2 === 1;
-                  return (
-                    <div key={i} className={`text-xs leading-relaxed font-mono text-[#E4E2DD] ${isOdd ? 'bg-white/5 rounded px-1 -mx-1' : ''}`}>
-                      {step.content}
-                    </div>
-                  );
-                }
-                // Empty lines as vertical spacer
-                if (step.type === 'text' && step.content.trim() === '') {
-                  return <div key={i} className="h-2" />;
-                }
-                return renderTypedStep(step, i);
-              });
-            })()}
-            {stream.status === "streaming" && (
-              <span className="inline-block w-2 h-4 bg-[#FACC15] animate-pulse ml-0.5 rounded-sm" />
-            )}
-          </div>
-        )}
-
-        {/* Error message */}
+        {/* Error fallback */}
         {stream.status === "error" && stream.errorMsg && (
           <div className="mt-2 flex items-start gap-1.5 text-xs text-red-400 font-mono">
             <AlertCircle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
             <span>{stream.errorMsg}</span>
-          </div>
-        )}
-
-        {/* Command result */}
-        {stream.commandResult && (
-          <div className="mt-2">
-            {stream.commandResult.command && (
-              <div className="text-[10px] text-[#6B6B6B] font-mono mb-1">
-                $ {stream.commandResult.command}
-              </div>
-            )}
-            <pre className="text-xs text-[#E4E2DD]/80 whitespace-pre-wrap font-mono bg-black/40 rounded-lg p-2 border border-white/5 overflow-x-auto">
-              {stream.commandResult.result}
-            </pre>
-          </div>
-        )}
-
-        {/* Tool calls — collapsible section */}
-        {stream.tools.length > 0 && (
-          <div className="mt-2 border-t border-white/5 pt-2">
-            <button
-              onClick={() => toggleToolsExpand(stream.sessionId)}
-              className="flex items-center gap-1 text-xs font-mono text-[#6B6B6B] hover:text-[#E4E2DD] transition-colors"
-            >
-              {expandedTools.has(stream.sessionId) ? (
-                <ChevronDown className="w-3 h-3" />
-              ) : (
-                <ChevronRight className="w-3 h-3" />
-              )}
-              <span>Tools ({stream.tools.length})</span>
-            </button>
-            {expandedTools.has(stream.sessionId) && (
-              <div className="mt-1 space-y-1">
-                {stream.tools.map((tool) => (
-                  <div key={tool.id} className="flex items-center gap-1.5 text-xs font-mono text-[#E4E2DD]/80">
-                    <ToolIcon name={tool.name} />
-                    <span className="truncate max-w-[200px]">{tool.name}</span>
-                    {tool.status === "running" ? (
-                      <Loader2 className="w-3 h-3 animate-spin text-[#FACC15] shrink-0" />
-                    ) : (
-                      <CheckCircle2 className="w-3 h-3 text-green-400 shrink-0" />
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Todo items */}
-        {stream.todoItems.length > 0 && (
-          <div className="mt-2 border-t border-white/5 pt-2">
-            <div className="text-[10px] text-[#6B6B6B] font-mono mb-1">Todo:</div>
-            {stream.todoItems.map((item, i) => (
-              <div key={i} className="text-xs font-mono text-[#E4E2DD]/80 leading-relaxed">
-                {item}
-              </div>
-            ))}
           </div>
         )}
       </div>
