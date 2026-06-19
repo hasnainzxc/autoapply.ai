@@ -42,3 +42,31 @@ coverage/
 *.tmp
 *.temp
 backend/applymate.db
+
+# Dev / Agent artifacts
+.omo/
+.opencode/
+.playwright-mcp/
+.serena/
+.next.bak/
+backend/uploads/
+backend/app/uploads/
+frontend/.next.bak/
+frontend/tsconfig.tsbuildinfo
+railway.sh
+scripts/generate_activity.py
+
+# Root screenshots / snapshots
+*.png
+agentchat-*
+homepage.png
+signin-page.png
+resumes-redirect-*.png
+resumes-redirect-*.txt
+page-current-state.md
+page-current.png
+applymate-homepage-snapshot.md
+applymate-homepage.png
+
+# Frontend auth artifacts
+frontend/app/(auth)/sign-in/sso-callback/

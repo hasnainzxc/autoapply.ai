@@ -31,7 +31,7 @@ SERVICES=(
   "redis|6379|docker_health:applymate-redis|docker start applymate-redis|.|/dev/null"
   "backend|8000|http://localhost:8000/api/health|uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload|${PROJECT_ROOT}/backend|/tmp/backend.log|PYTHONPATH"
   "sidecar|4197|http://localhost:4197/health|npm run dev|${PROJECT_ROOT}/sidecar|/tmp/sidecar.log"
-  "opencode|4196|http://localhost:4196/health|opencode serve --port 4196|.|/tmp/opencode.log"
+  "opencode|4196|systemd_active:opencode-serve|systemctl --user start opencode-serve|.|/dev/null"
   "frontend|3000|http://localhost:3000|npm run dev|${PROJECT_ROOT}/frontend|/tmp/frontend.log"
 )
 
@@ -51,6 +51,9 @@ health_ok() {
   local spec=$1
   if [[ "$spec" == docker_health:* ]]; then
     docker_alive "${spec#docker_health:}"
+    return $?
+  elif [[ "$spec" == systemd_active:* ]]; then
+    systemctl --user is-active "${spec#systemd_active:}" >/dev/null 2>&1
     return $?
   else
     curl -sf --max-time 3 "$spec" >/dev/null 2>&1
@@ -207,7 +210,7 @@ start() {
     echo -e "${RED}Some services failed to start. Check logs:${NC}"
     echo "  Backend:  tail -f /tmp/backend.log"
     echo "  Sidecar:  tail -f /tmp/sidecar.log"
-    echo "  OpenCode: tail -f /tmp/opencode.log"
+    echo "  OpenCode: journalctl --user -u opencode-serve -n 50 --no-pager"
     echo "  Frontend: tail -f /tmp/frontend.log"
   fi
   echo ""

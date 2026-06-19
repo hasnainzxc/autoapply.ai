@@ -5,9 +5,17 @@ echo "╔═══════════════════════�
 echo "║        Stopping ApplyMate            ║"
 echo "╚══════════════════════════════════════╝"
 
-PORTS="4196 4197 8000 3000"
+PORTS="4197 8000 3000"
 
-# Kill processes by port
+# Stop opencode via systemd (kill won't stick — Restart=always respawns)
+echo "  [..] Stopping opencode-serve (systemd)..."
+if systemctl --user stop opencode-serve 2>/dev/null; then
+  echo "  [OK] opencode-serve stopped"
+else
+  echo "  [..] opencode-serve not running"
+fi
+
+# Kill other processes by port
 for port in $PORTS; do
   pids=$(lsof -ti:"$port" 2>/dev/null || true)
   if [[ -n "$pids" ]]; then
