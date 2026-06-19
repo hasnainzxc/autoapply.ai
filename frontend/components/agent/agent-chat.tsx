@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   Send,
   Terminal,
@@ -165,8 +167,9 @@ export function AgentChat({
       for (const evt of newEvents) {
         const sid = evt.sessionId || "default";
 
-        if (evt.type === "session_status") {
-          if (evt.status === "busy") {
+        if (evt.type === "session_status" || evt.type === "session.idle") {
+          const idleStatus = evt.type === "session.idle" ? "done" : evt.status;
+          if (idleStatus === "busy" || evt.status === "busy") {
             const existing = next.get(sid);
             if (!existing) {
               next.set(sid, {
@@ -182,7 +185,7 @@ export function AgentChat({
                 status: "streaming",
               });
             }
-          } else if (evt.status === "done") {
+          } else if (idleStatus === "done") {
             const existing = next.get(sid);
             if (existing) {
               next.set(sid, {
@@ -191,7 +194,7 @@ export function AgentChat({
                 status: "done",
               });
             }
-          } else if (evt.status === "error") {
+          } else if (idleStatus === "error") {
             const existing = next.get(sid);
             if (existing) {
               next.set(sid, {
@@ -472,9 +475,66 @@ export function AgentChat({
             key={key}
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            className="text-sm leading-relaxed whitespace-pre-wrap break-words font-mono text-[#E4E2DD] px-1"
+            className="text-sm leading-relaxed break-words text-[#E4E2DD] px-1 markdown-dark"
           >
-            {text}
+            <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
+              components={{
+                code: ({ className, children, ...props }) => {
+                  const match = /language-(\w+)/.exec(className || "");
+                  const isInline = !match && !String(children).includes("\n");
+                  return isInline ? (
+                    <code className="font-mono bg-black/30 px-1 rounded text-[#E4E2DD]" {...props}>
+                      {children}
+                    </code>
+                  ) : (
+                    <code className={className} {...props}>
+                      {children}
+                    </code>
+                  );
+                },
+                pre: ({ children }) => (
+                  <pre className="font-mono bg-black/40 p-3 rounded-lg overflow-x-auto border border-white/5 text-xs">
+                    {children}
+                  </pre>
+                ),
+                table: ({ children }) => (
+                  <table className="w-full border-collapse my-2">{children}</table>
+                ),
+                th: ({ children }) => (
+                  <th className="border border-white/10 px-2 py-1 text-left text-xs font-medium text-[#FACC15]/80">
+                    {children}
+                  </th>
+                ),
+                td: ({ children }) => (
+                  <td className="border border-white/10 px-2 py-1 text-xs text-[#E4E2DD]/80">
+                    {children}
+                  </td>
+                ),
+                a: ({ children, href }) => (
+                  <a href={href} className="text-[#60A5FA] underline" target="_blank" rel="noopener noreferrer">
+                    {children}
+                  </a>
+                ),
+                hr: () => <hr className="border-white/10 my-3" />,
+                ul: ({ children }) => <ul className="list-disc list-inside space-y-0.5">{children}</ul>,
+                ol: ({ children }) => <ol className="list-decimal list-inside space-y-0.5">{children}</ol>,
+                li: ({ children }) => <li className="text-sm text-[#E4E2DD]/80">{children}</li>,
+                blockquote: ({ children }) => (
+                  <blockquote className="border-l-2 border-[#FACC15]/30 pl-3 italic text-[#E4E2DD]/60 my-2">
+                    {children}
+                  </blockquote>
+                ),
+                h1: ({ children }) => <h1 className="text-base font-bold text-[#FACC15]/90 mt-3 mb-1">{children}</h1>,
+                h2: ({ children }) => <h2 className="text-sm font-bold text-[#FACC15]/80 mt-2 mb-1">{children}</h2>,
+                h3: ({ children }) => <h3 className="text-sm font-semibold text-[#E4E2DD]/90 mt-2 mb-0.5">{children}</h3>,
+                p: ({ children }) => <p className="text-sm text-[#E4E2DD]/90 my-1">{children}</p>,
+                strong: ({ children }) => <strong className="font-semibold text-[#E4E2DD]">{children}</strong>,
+                em: ({ children }) => <em className="italic text-[#E4E2DD]/80">{children}</em>,
+              }}
+            >
+              {text}
+            </ReactMarkdown>
           </motion.div>
         );
       }
