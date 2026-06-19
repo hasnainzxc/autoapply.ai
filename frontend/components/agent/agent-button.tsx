@@ -2,7 +2,6 @@
 
 import { useState, useCallback, useEffect } from "react";
 import { Bot } from "lucide-react";
-import { useAgent } from "@/contexts/agent-context";
 import { AgentModal } from "./agent-modal";
 
 const DEFAULT_MODES = [
@@ -32,7 +31,6 @@ interface AgentButtonProps {
 export function AgentButton({ variant = "navbar" }: AgentButtonProps) {
   const [panelState, setPanelState] = useState<PanelState>("closed");
   const [modes, setModes] = useState(DEFAULT_MODES);
-  const { connect, disconnect, events, activeSession, isConnected, sendCommand, registerSession } = useAgent();
 
   // Fetch real modes from API
   useEffect(() => {
@@ -45,9 +43,8 @@ export function AgentButton({ variant = "navbar" }: AgentButtonProps) {
   }, []);
 
   const openModal = useCallback(() => {
-    connect();
     setPanelState("open");
-  }, [connect]);
+  }, []);
 
   const toggleMinimize = useCallback(() => {
     setPanelState((prev) => (prev === "open" ? "minimized" : "open"));
@@ -55,8 +52,7 @@ export function AgentButton({ variant = "navbar" }: AgentButtonProps) {
 
   const closeModal = useCallback(() => {
     setPanelState("closed");
-    disconnect();
-  }, [disconnect]);
+  }, []);
 
   const handleButtonClick = useCallback(() => {
     if (panelState === "closed") {
@@ -66,60 +62,7 @@ export function AgentButton({ variant = "navbar" }: AgentButtonProps) {
     }
   }, [panelState, openModal, toggleMinimize]);
 
-  const handleCommand = useCallback(
-    async (command: string) => {
-      connect();
-
-      const trimmed = command.trim();
-      if (!trimmed) return;
-
-      if (trimmed.startsWith("/")) {
-        const mode = trimmed.slice(1).split(" ")[0];
-        if (!mode) return;
-        if (activeSession) {
-          sendCommand({ type: "command", command: mode, sessionId: activeSession, args: {} });
-        } else {
-          try {
-            const res = await fetch("/api/opencode/trigger", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ mode, args: {} }),
-            });
-            if (!res.ok) {
-              console.error("trigger failed:", res.status, await res.text());
-            } else {
-              const data = await res.json();
-              if (data?.session_id) {
-                registerSession(data.session_id);
-              }
-            }
-          } catch (e) {
-            console.error("trigger error:", e);
-          }
-        }
-        return;
-      }
-
-      sendCommand({ type: "chat", text: trimmed, ...(activeSession ? { sessionId: activeSession } : {}) });
-    },
-    [connect, sendCommand, activeSession]
-  );
-
-  const handleAbort = useCallback(async () => {
-    if (!activeSession) return;
-    try {
-      await fetch(`/api/opencode/sessions/${activeSession}/abort`, { method: "POST" });
-    } catch (e) {
-      console.error(e);
-    }
-  }, [activeSession]);
-
   const isPanelActive = panelState !== "closed";
-
-  // Auto-connect for inline variant
-  useEffect(() => {
-    if (variant === "inline") connect();
-  }, [variant, connect]);
 
   return (
     <>
@@ -153,13 +96,6 @@ export function AgentButton({ variant = "navbar" }: AgentButtonProps) {
         isMinimized={panelState === "minimized"}
         onClose={closeModal}
         onToggleMinimize={toggleMinimize}
-        mode=""
-        events={events}
-        activeSession={activeSession}
-        onAbort={handleAbort}
-        onCommand={handleCommand}
-        modes={modes}
-        isConnected={isConnected}
       />
     </>
   );
