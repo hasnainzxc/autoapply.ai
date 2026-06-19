@@ -24,12 +24,27 @@ const DEFAULT_MODES = [
 
 type PanelState = "closed" | "open" | "minimized";
 
+function getInitialState(): PanelState {
+  if (typeof window === "undefined") return "closed";
+  const saved = localStorage.getItem("agent_panel_state");
+  if (saved === "open" || saved === "minimized") return saved;
+  return "closed";
+}
+
+function getInitialWidth(): number {
+  if (typeof window === "undefined") return 480;
+  const saved = localStorage.getItem("agent_panel_width");
+  const parsed = saved ? parseInt(saved, 10) : NaN;
+  return Number.isFinite(parsed) && parsed >= 320 ? parsed : 480;
+}
+
 interface AgentButtonProps {
   variant?: "navbar" | "inline";
 }
 
 export function AgentButton({ variant = "navbar" }: AgentButtonProps) {
-  const [panelState, setPanelState] = useState<PanelState>("closed");
+  const [panelState, setPanelState] = useState<PanelState>(getInitialState);
+  const [panelWidth, setPanelWidth] = useState(getInitialWidth);
   const [modes, setModes] = useState(DEFAULT_MODES);
 
   // Fetch real modes from API
@@ -41,6 +56,20 @@ export function AgentButton({ variant = "navbar" }: AgentButtonProps) {
       })
       .catch(() => {});
   }, []);
+
+  // Persist panel state to localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("agent_panel_state", panelState);
+    }
+  }, [panelState]);
+
+  // Persist panel width to localStorage
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      localStorage.setItem("agent_panel_width", String(panelWidth));
+    }
+  }, [panelWidth]);
 
   const openModal = useCallback(() => {
     setPanelState("open");
@@ -61,6 +90,10 @@ export function AgentButton({ variant = "navbar" }: AgentButtonProps) {
       toggleMinimize();
     }
   }, [panelState, openModal, toggleMinimize]);
+
+  const handleResize = useCallback((newWidth: number) => {
+    setPanelWidth(newWidth);
+  }, []);
 
   const isPanelActive = panelState !== "closed";
 
@@ -96,6 +129,8 @@ export function AgentButton({ variant = "navbar" }: AgentButtonProps) {
         isMinimized={panelState === "minimized"}
         onClose={closeModal}
         onToggleMinimize={toggleMinimize}
+        width={panelWidth}
+        onResize={handleResize}
       />
     </>
   );
