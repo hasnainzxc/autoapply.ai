@@ -168,7 +168,7 @@ export function AgentChat({
         if (evt.type === "session_status") {
           if (evt.status === "busy") {
             const existing = next.get(sid);
-            if (!existing || existing.status === "done" || existing.status === "error") {
+            if (!existing) {
               next.set(sid, {
                 sessionId: sid,
                 events: [evt],
